@@ -1,0 +1,7 @@
+{"type":"thread.started","thread_id":"01a12c48-38f9-7741-9302-ef808b5da79b"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"I’ll call diagram_list once.\n"}}
+{"type":"item.started","item":{"id":"item_1","type":"mcp_tool_call","server":"diagram-ai","tool":"diagram_list","arguments":{},"result":null,"error":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"mcp_tool_call","server":"diagram-ai","tool":"diagram_list","arguments":{},"result":{"content":[{"type":"text","text":"1 diagram:\n- **Bridge fixture** (id: `e6rz11b3q3v6`, type: system-architecture) — 2 nodes, 0 edges, updated 2026-10-11 18:44 — http://localhost:3103/d/e6rz11b3q3v6"}],"structured_content":{"total":1,"count":1,"offset":0,"has_more":false,"diagrams":[{"id":"e6rz11b3q3v6","name":"Bridge fixture","type":"system-architecture","nodeCount":2,"edgeCount":0,"openComments":0,"createdAt":"2026-10-11T18:33:43.010Z","updatedAt":"2026-10-11T18:44:42.493Z","version":3,"url":"http://localhost:3103/d/e6rz11b3q3v6"}]}},"error":null,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"done"}}
+{"type":"turn.completed","usage":{"input_tokens":61729,"cached_input_tokens":52224,"cache_write_input_tokens":0,"output_tokens":82,"reasoning_output_tokens":0}}

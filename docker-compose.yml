@@ -1,0 +1,32 @@
+# Local PostgreSQL for Diagram AI. See docs/database.md.
+#   npm run db:up       start it (waits until healthy)
+#   npm run db:down     stop it, keeping the data
+#   npm run db:reset    stop it and delete the data (asks for --yes)
+#
+# Development credentials, bound to localhost only. Do not reuse this file for a shared server.
+name: diagram-ai
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: diagram-ai-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: diagram_ai
+      POSTGRES_PASSWORD: diagram_ai
+      POSTGRES_DB: diagram_ai
+    ports:
+      # 5435 rather than 5432-5434, which other local projects commonly use.
+      - "127.0.0.1:${DIAGRAM_AI_PG_PORT:-5435}:5432"
+    volumes:
+      - diagram-ai-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U diagram_ai -d diagram_ai"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+volumes:
+  diagram-ai-pgdata:
+    name: diagram-ai-pgdata

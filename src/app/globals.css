@@ -1,26 +1,179 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ------------------------------------------------------------------ fonts
+   The diagram fonts are plain TTF files so the canvas, the exporters and the
+   server-side renderer all use the exact same glyphs. The UI reuses them. */
+@font-face { font-family: "IBM Plex Sans"; font-weight: 400; font-style: normal; font-display: swap; src: url("/fonts/plex-sans-400.ttf") format("truetype"); }
+@font-face { font-family: "IBM Plex Sans"; font-weight: 400; font-style: italic; font-display: swap; src: url("/fonts/plex-sans-400i.ttf") format("truetype"); }
+@font-face { font-family: "IBM Plex Sans"; font-weight: 600; font-style: normal; font-display: swap; src: url("/fonts/plex-sans-600.ttf") format("truetype"); }
+@font-face { font-family: "IBM Plex Sans"; font-weight: 600; font-style: italic; font-display: swap; src: url("/fonts/plex-sans-600i.ttf") format("truetype"); }
+@font-face { font-family: "IBM Plex Serif"; font-weight: 400; font-style: normal; font-display: swap; src: url("/fonts/plex-serif-400.ttf") format("truetype"); }
+@font-face { font-family: "IBM Plex Serif"; font-weight: 400; font-style: italic; font-display: swap; src: url("/fonts/plex-serif-400i.ttf") format("truetype"); }
+@font-face { font-family: "IBM Plex Serif"; font-weight: 600; font-style: normal; font-display: swap; src: url("/fonts/plex-serif-600.ttf") format("truetype"); }
+@font-face { font-family: "IBM Plex Mono"; font-weight: 400; font-style: normal; font-display: swap; src: url("/fonts/plex-mono-400.ttf") format("truetype"); }
+@font-face { font-family: "IBM Plex Mono"; font-weight: 400; font-style: italic; font-display: swap; src: url("/fonts/plex-mono-400i.ttf") format("truetype"); }
+@font-face { font-family: "IBM Plex Mono"; font-weight: 600; font-style: normal; font-display: swap; src: url("/fonts/plex-mono-600.ttf") format("truetype"); }
+@font-face { font-family: "Kalam"; font-weight: 400; font-style: normal; font-display: swap; src: url("/fonts/kalam-400.ttf") format("truetype"); }
+@font-face { font-family: "Kalam"; font-weight: 700; font-style: normal; font-display: swap; src: url("/fonts/kalam-700.ttf") format("truetype"); }
+
+/* ----------------------------------------------------------------- tokens
+   "Drafting table": warm paper, ink, one cobalt accent. Agents get their own
+   vivid hues so their work is unmistakable on the canvas. */
+:root,
+[data-theme="light"] {
+  --bg: #f4f1e9;
+  --surface: #fdfbf6;
+  --raised: #ffffff;
+  --sunken: #ece8dd;
+  --ink: #17150f;
+  --ink-2: #4f4b40;
+  --ink-3: #8a8576;
+  --ink-4: #b7b2a4;
+  --line: #e1dccf;
+  --line-strong: #cbc5b5;
+  --accent: #2447f9;
+  --accent-hover: #1a37d4;
+  --accent-soft: #e4e9ff;
+  --accent-ink: #ffffff;
+  --danger: #d2382d;
+  --danger-soft: #fde8e5;
+  --success: #1c8f4d;
+  --warn: #b97f06;
+  --agent-claude: #d9622b;
+  --agent-codex: #0e9f6e;
+  --agent-other: #8b5cf6;
+  --shadow-sm: 0 1px 2px rgb(40 34 20 / 0.08);
+  --shadow-md: 0 1px 2px rgb(40 34 20 / 0.06), 0 6px 20px -6px rgb(40 34 20 / 0.18);
+  --shadow-lg: 0 2px 4px rgb(40 34 20 / 0.06), 0 22px 48px -12px rgb(40 34 20 / 0.28);
+  --grid-dot: rgb(23 21 15 / 0.16);
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --bg: #0e1014;
+  --surface: #15181e;
+  --raised: #1b1f27;
+  --sunken: #0a0c0f;
+  --ink: #ece9e1;
+  --ink-2: #b8b4aa;
+  --ink-3: #807d75;
+  --ink-4: #56544f;
+  --line: #262a33;
+  --line-strong: #373c48;
+  --accent: #7b92ff;
+  --accent-hover: #94a7ff;
+  --accent-soft: #1b244d;
+  --accent-ink: #0b0d12;
+  --danger: #ff6b5e;
+  --danger-soft: #3a1815;
+  --success: #3ecf7e;
+  --warn: #e5b54a;
+  --agent-claude: #f08a55;
+  --agent-codex: #34d399;
+  --agent-other: #a78bfa;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -6px rgb(0 0 0 / 0.6);
+  --shadow-lg: 0 2px 4px rgb(0 0 0 / 0.4), 0 24px 56px -12px rgb(0 0 0 / 0.75);
+  --grid-dot: rgb(236 233 225 / 0.14);
+  color-scheme: dark;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-sunken: var(--sunken);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-4: var(--ink-4);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-success: var(--success);
+  --color-warn: var(--warn);
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", monospace;
+  --font-display: var(--font-display-serif), "IBM Plex Serif", Georgia, serif;
+  --shadow-panel: var(--shadow-md);
+  --shadow-pop: var(--shadow-lg);
+  --radius-panel: 12px;
+  --animate-pop: pop 140ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  --animate-fade-up: fade-up 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@keyframes pop {
+  from { opacity: 0; transform: scale(0.96) translateY(2px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+@layer base {
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
+  ::selection { background: color-mix(in srgb, var(--accent) 28%, transparent); }
+  button { cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  * { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ----------------------------------------------------------------- canvas */
+
+.canvas-root { touch-action: none; user-select: none; -webkit-user-select: none; }
+
+/* In dark mode the page itself is flipped (like a blueprint) so light diagrams
+   stay comfortable to look at. Exports always use the true colours. */
+[data-theme="dark"] .canvas-paper[data-invert="true"] { filter: invert(0.92) hue-rotate(180deg); }
+
+.canvas-world text { pointer-events: none; }
+.canvas-world [data-editing="true"] text { visibility: hidden; }
+.canvas-world .edge-flow { stroke-dasharray: 6 5; animation: edge-flow 0.7s linear infinite; }
+@keyframes edge-flow { to { stroke-dashoffset: -11; } }
+
+/* Elements drawn by an agent appear one after another. */
+.reveal { animation: reveal 380ms cubic-bezier(0.2, 0.9, 0.25, 1.15) both; transform-box: fill-box; transform-origin: center; }
+@keyframes reveal {
+  from { opacity: 0; transform: scale(0.82); }
+  to { opacity: 1; transform: none; }
+}
+.reveal-line { animation: reveal-line 320ms ease-out both; }
+@keyframes reveal-line {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.pulse-ring { animation: pulse-ring 1.4s ease-out 3; transform-box: fill-box; transform-origin: center; }
+@keyframes pulse-ring {
+  0% { opacity: 0.9; stroke-width: 2; }
+  70% { opacity: 0; stroke-width: 14; }
+  100% { opacity: 0; stroke-width: 14; }
+}
+
+.agent-dot { animation: agent-dot 1.2s ease-in-out infinite; }
+@keyframes agent-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.8); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal, .reveal-line, .pulse-ring, .agent-dot, .canvas-world .edge-flow { animation: none; }
 }
