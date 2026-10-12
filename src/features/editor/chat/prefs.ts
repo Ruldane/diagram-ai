@@ -9,7 +9,7 @@ const ENGINE_KEY = "diagram-ai.assistant.engine";
 const ACK_KEY = "diagram-ai.assistant.ack";
 const WORKDIR_KEY = "diagram-ai.assistant.workdir";
 
-const ENGINES: readonly ChatEngineId[] = ["claude-code", "codex", "claude-api"];
+const ENGINES: readonly ChatEngineId[] = ["claude-code", "claude-api"];
 
 function read(key: string): string | null {
   try {

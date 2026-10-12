@@ -14,7 +14,11 @@ The browser side of a diagram: store, live sync, canvas, commands, panels and di
 
 ## Sync
 
-`sync/client.ts` (`connectSync`) loads the document, opens the SSE stream, queues local patches (coalesced while a request is in flight, retried, reload on rejection) and posts presence (selection, viewport) so agents can ask "what is selected". `sync/playback.ts` choreographs remote work: new elements draw in one by one under the agent's cursor, moved nodes glide, and the view follows when the agent draws outside it. The document is already up to date when playback starts — playback is presentation only.
+`sync/client.ts` (`connectSync`) loads the document, opens the SSE stream, queues local patches (coalesced while a request is in flight, retried, reload on rejection) and posts presence (selection, viewport, and the pointer while others are present) so agents can ask "what is selected" and other people see live cursors (`presence/PeerLayer.tsx`, `presence/PeerAvatars.tsx`; see [auth.md](auth.md)). `sync/playback.ts` choreographs remote work: new elements draw in one by one under the agent's cursor, moved nodes glide, and the view follows when the agent draws outside it. The document is already up to date when playback starts — playback is presentation only.
+
+## Viewers
+
+`readOnly` (true for the `viewer` role, set from the document response in `sync/client.ts`) makes the editor genuinely read-only: `apply`, `applyTransient`, `beginGesture`, `undo`/`redo` and `setTool` (anything but select/pan) are no-ops in the store; `commands.isEnabled` refuses everything outside `VIEWER_COMMANDS` and the non-writing View commands; the palette and the full toolbar give way to `presence/ViewerToolbar.tsx`; handles and ports are not drawn; and the side panel's content sits in a disabled `<fieldset>`. The server enforces the same rules, so none of this is the security boundary. New mutating UI needs no extra work if it goes through the store; new commands are disabled for viewers by default.
 
 ## Canvas
 
@@ -37,7 +41,8 @@ Gotchas: the pointer is captured by the canvas root, so hit-testing uses `docume
 
 - **Side panel tabs**: add the id to `SidePanel` in `store/editor-store.ts`, then register an entry in `TABS` and `PANELS` in `panels/SidePanel.tsx`. Panel components unmount when another tab is chosen; keep conversational or draft state in the store (see `chat`).
 - **Dialogs**: add the id to `DialogId`, render it from `dialogs/Dialogs.tsx`, open with `store.setState({ dialog: "…" })`. While a dialog is open canvas shortcuts are suspended; `Dialogs` clears orphaned ids.
-- **Floating chrome** lives in `Editor.tsx` (`Workspace`): top bar, palette, side panel, toolbar, zoom controls.
+- **Floating chrome** lives in `Editor.tsx` (`Workspace`): top bar, palette, side panel, toolbar, zoom controls. It is not rendered while `presenting` is set; see [presentation.md](presentation.md).
+- **Code tab** (`code/`): the diagram as Mermaid or PlantUML text, see [code-editor.md](code-editor.md).
 
 ## Verifying UI work
 

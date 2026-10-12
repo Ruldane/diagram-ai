@@ -82,6 +82,32 @@ export function startPresentation(store: EditorStore, frame?: number): boolean {
   return true;
 }
 
+/**
+ * `?present=1` starts the show; `&slide=3` (1-based) picks the slide. The
+ * parameter is dropped when the show ends, so a reload does not start it again.
+ */
+export function startFromUrl(store: EditorStore): boolean {
+  if (typeof window === "undefined") return false;
+  const params = new URLSearchParams(window.location.search);
+  const flag = params.get("present");
+  if (flag === null || flag === "0" || flag === "false") return false;
+  const slide = Number.parseInt(params.get("slide") ?? "", 10);
+  return startPresentation(store, Number.isFinite(slide) && slide > 0 ? slide - 1 : undefined);
+}
+
+function dropUrlParameters(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("present")) return;
+    url.searchParams.delete("present");
+    url.searchParams.delete("slide");
+    window.history.replaceState(window.history.state, "", url);
+  } catch {
+    // A blocked history API only means the address keeps the parameter.
+  }
+}
+
 export function stopPresentation(store: EditorStore): void {
   if (store.getState().presenting) store.setState({ presenting: null });
 }
@@ -144,11 +170,13 @@ export function watchPresentation(store: EditorStore): () => void {
     setFullscreen(store, true);
   };
 
-  const leave = () => {
+  /** `ended`: the show was ended on purpose, so a reload must not start it again. Unmounting is not that. */
+  const leave = (ended: boolean) => {
     if (!active) return;
     active = false;
     document.removeEventListener("fullscreenchange", onFullscreenChange);
     setFullscreen(store, false);
+    if (ended) dropUrlParameters();
     const restore = current.restore;
     current.restore = null;
     cancelAnimation(current);
@@ -159,13 +187,13 @@ export function watchPresentation(store: EditorStore): () => void {
   const unsubscribe = store.subscribe((state, previous) => {
     const now = state.presenting !== null;
     if (now && previous.presenting === null) enter();
-    else if (!now && previous.presenting !== null) leave();
+    else if (!now && previous.presenting !== null) leave(true);
   });
 
   return () => {
     unsubscribe();
     if (store.getState().presenting) store.setState({ presenting: null });
-    leave();
+    leave(false);
     cancelAnimation(current);
   };
 }

@@ -10,6 +10,7 @@ import { playRemotePatch, stopPlayback } from "./playback";
 
 const ACTIVITY_LIMIT = 200;
 const PRESENCE_DEBOUNCE_MS = 350;
+const CURSOR_INTERVAL_MS = 80;
 const RETRY_DELAYS_MS = [400, 1200, 3000];
 
 /**
@@ -37,8 +38,17 @@ export function connectSync(store: EditorStore): () => void {
       store.setState({ status: "missing" });
       return null;
     }
+    if (response.status === 401) {
+      // Accounts are on and this browser has neither a session nor a share link for the diagram.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- the sync client has no router, and a full load resets the editor
+      window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
+      return null;
+    }
     if (!response.ok) throw new Error(`Failed to load diagram (${response.status})`);
-    return ((await response.json()) as DiagramResponse).diagram;
+    const body = (await response.json()) as DiagramResponse;
+    // Accounts on: what this person may do. A viewer gets a read-only editor.
+    store.setState({ role: body.viewer?.role ?? "owner", me: body.viewer?.user ?? null, readOnly: body.viewer?.role === "viewer" });
+    return body.diagram;
   }
 
   async function reload() {
@@ -114,7 +124,7 @@ export function connectSync(store: EditorStore): () => void {
   function handle(event: DiagramEvent) {
     switch (event.type) {
       case "hello":
-        store.setState({ connection: "online", agents: event.agents, activity: event.activity, review: event.review ?? null, peers: event.peers ?? [] });
+        store.setState({ connection: "online", agents: event.agents, activity: event.activity, review: event.review ?? null, peers: (event.peers ?? []).filter((peer) => peer.id !== clientId) });
         // Missed changes while disconnected (or the first load raced a write).
         if (store.getState().doc && event.version > version) void reload();
         break;
@@ -153,6 +163,7 @@ export function connectSync(store: EditorStore): () => void {
         store.setState({ review: event.review });
         break;
       case "peer": {
+        if (event.peer.id === clientId) break;
         const others = store.getState().peers.filter((peer) => peer.id !== event.peer.id);
         store.setState({ peers: [...others, event.peer] });
         break;
@@ -180,29 +191,61 @@ export function connectSync(store: EditorStore): () => void {
       }
     };
     // EventSource reconnects by itself; the next `hello` triggers a resync if needed.
-    source.onerror = () => store.setState({ connection: "offline" });
+    source.onerror = () => {
+      store.setState({ connection: "offline" });
+      // A closed stream is not retried by the browser: the server refused it (signed out, access removed). Find out why.
+      if (source?.readyState === EventSource.CLOSED) void reload();
+    };
   }
 
   /* ------------------------------------------------------------ presence */
 
   let presenceTimer: number | undefined;
+  let cursorTimer: number | undefined;
   let lastPresence = "";
+  /** Pointer position in world coordinates; null while it is outside the canvas. */
+  let cursor: { x: number; y: number } | null = null;
+  let lastCursorSend = 0;
+  let canvasRoot: Element | null = null;
+
+  /** Reports selection, view and pointer. Selection and view drive "this" for agents; the pointer is shown to other people. */
+  function sendPresence() {
+    const { selection, viewport, canvasSize, status } = store.getState();
+    if (status !== "ready" || disposed) return;
+    const body = JSON.stringify({
+      clientId,
+      selection,
+      viewport: { x: -viewport.x / viewport.zoom, y: -viewport.y / viewport.zoom, w: canvasSize.w / viewport.zoom, h: canvasSize.h / viewport.zoom },
+      cursor,
+    });
+    if (body === lastPresence) return;
+    lastPresence = body;
+    lastCursorSend = Date.now();
+    void fetch(`${base}/presence`, { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true }).catch(() => undefined);
+  }
+
   const unsubscribe = store.subscribe((state, previous) => {
     if (state.selection === previous.selection && state.viewport === previous.viewport && state.canvasSize === previous.canvasSize) return;
     window.clearTimeout(presenceTimer);
-    presenceTimer = window.setTimeout(() => {
-      const { selection, viewport, canvasSize, status } = store.getState();
-      if (status !== "ready") return;
-      const body = JSON.stringify({
-        clientId,
-        selection,
-        viewport: { x: -viewport.x / viewport.zoom, y: -viewport.y / viewport.zoom, w: canvasSize.w / viewport.zoom, h: canvasSize.h / viewport.zoom },
-      });
-      if (body === lastPresence) return;
-      lastPresence = body;
-      void fetch(`${base}/presence`, { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true }).catch(() => undefined);
-    }, PRESENCE_DEBOUNCE_MS);
+    presenceTimer = window.setTimeout(sendPresence, PRESENCE_DEBOUNCE_MS);
   });
+
+  // Live cursors: only worth sending while somebody else is on the diagram, and no faster than ~12 per second.
+  function onPointerMove(event: PointerEvent) {
+    if (!canvasRoot?.isConnected) canvasRoot = document.querySelector(".canvas-root");
+    let next: { x: number; y: number } | null = null;
+    if (canvasRoot && event.target instanceof Node && canvasRoot.contains(event.target)) {
+      const rect = canvasRoot.getBoundingClientRect();
+      const world = store.getState().toWorld({ x: event.clientX - rect.left, y: event.clientY - rect.top });
+      next = { x: Math.round(world.x), y: Math.round(world.y) };
+    }
+    cursor = next;
+    if (store.getState().peers.length === 0) return;
+    const wait = CURSOR_INTERVAL_MS - (Date.now() - lastCursorSend);
+    window.clearTimeout(cursorTimer);
+    cursorTimer = window.setTimeout(sendPresence, Math.max(0, wait));
+  }
+  document.addEventListener("pointermove", onPointerMove, { passive: true });
 
   void reload().then(open);
 
@@ -210,7 +253,9 @@ export function connectSync(store: EditorStore): () => void {
     disposed = true;
     source?.close();
     unsubscribe();
+    document.removeEventListener("pointermove", onPointerMove);
     window.clearTimeout(presenceTimer);
+    window.clearTimeout(cursorTimer);
     stopPlayback(store);
     store.setState({ emit: null, connection: "connecting" });
   };

@@ -92,6 +92,8 @@ export interface Actor {
   /** Stable identifier, e.g. `claude-code`, `codex`, or a browser client id. */
   id: string;
   name: string;
+  /** Accounts on: the account an agent acts for (its personal access token's owner). */
+  ownerId?: string;
 }
 
 /* ---------------------------------------------------------------- elements */

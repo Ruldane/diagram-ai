@@ -8,8 +8,7 @@ import type { Engine } from "./types";
 
 /**
  * In order of preference: the person's own plan first, then an API key.
- * Codex is deliberately not bridged (see docs/assistant.md); `./codex.ts` is
- * unreferenced and is slated for deletion.
+ * Codex is deliberately not bridged (see docs/assistant.md).
  */
 export const ENGINES: readonly Engine[] = [claudeCodeEngine, claudeApiEngine];
 

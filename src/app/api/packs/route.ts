@@ -1,4 +1,5 @@
 import { assertSameOrigin, json, route } from "@/server/http";
+import { requestContext } from "@/server/auth/request";
 import { invalid } from "@/server/errors";
 import { createPack, listPacks, MAX_PACK_REQUEST_BYTES, packsVersion, readPack } from "@/server/packs/service";
 
@@ -7,6 +8,7 @@ import { createPack, listPacks, MAX_PACK_REQUEST_BYTES, packsVersion, readPack }
  * adds `full`, every pack with its icons, which is what the editor loads.
  */
 export const GET = route(async (request: Request) => {
+  (await requestContext(request)).access.requireUser();
   const packs = await listPacks();
   const version = packsVersion(packs);
   if (new URL(request.url).searchParams.get("full") !== "1") return json({ packs, version });
@@ -21,6 +23,7 @@ export const GET = route(async (request: Request) => {
  */
 export const POST = route(async (request: Request) => {
   assertSameOrigin(request);
+  (await requestContext(request)).access.requireAdmin();
   const length = Number(request.headers.get("content-length") ?? 0);
   if (length > MAX_PACK_REQUEST_BYTES) throw invalid(`The upload is larger than ${MAX_PACK_REQUEST_BYTES / 1048576} MB.`);
   const result = await createPack(await request.json());

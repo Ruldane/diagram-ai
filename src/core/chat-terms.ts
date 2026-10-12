@@ -1,4 +1,4 @@
-import type { ChatEngineId } from "./protocol";
+import type { ChatEngineId, LocalChatEngineId } from "./protocol";
 
 /**
  * What a person agrees to before the assistant drives a CLI they have
@@ -26,7 +26,7 @@ const COMMON = [
   "It is for your own use, on this computer, while you are sitting at it. Do not share your login or expose this app to other people or a network.",
 ];
 
-export const BRIDGE_TERMS: Record<"claude-code" | "codex", BridgeTerms> = {
+export const BRIDGE_TERMS: Record<LocalChatEngineId, BridgeTerms> = {
   "claude-code": {
     title: "Use your Claude Code login",
     points: [
@@ -35,14 +35,5 @@ export const BRIDGE_TERMS: Record<"claude-code" | "codex", BridgeTerms> = {
       "Anthropic's terms say a login is personal: it must not be shared, and a consumer plan must not be used commercially. You are responsible for following the terms that apply to your plan, which can change.",
     ],
     confirm: "I understand, use Claude Code",
-  },
-  codex: {
-    title: "Use your Codex login",
-    points: [
-      ...COMMON,
-      "Requests count against the usage limits of your own ChatGPT plan, or your OpenAI API account if Codex is signed in with a key.",
-      "OpenAI's documentation recommends an API key for programmatic use and does not address third-party apps that run the Codex CLI. Using it this way is at your own risk, and OpenAI's terms and limits apply to you.",
-    ],
-    confirm: "I understand, use Codex",
   },
 };

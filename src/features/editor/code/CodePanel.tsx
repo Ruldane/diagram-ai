@@ -1,12 +1,12 @@
 "use client";
 
-import { ChevronDown, CircleAlert, FileCode, ListPlus, Replace, TriangleAlert, WandSparkles } from "lucide-react";
+import { ChevronDown, CircleAlert, FileCode, ListPlus, RefreshCw, Replace, TriangleAlert, WandSparkles } from "lucide-react";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { matchCodeIds, planCodeApply, type CodeApplyMode, type CodePlan } from "@/core/code/apply";
 import { CODE_EXAMPLES, PLACEHOLDERS } from "@/core/code/examples";
-import { generateMermaid } from "@/core/code/generate";
+import { generateCode } from "@/core/code/generate";
 import { parseCode, type CodeParse } from "@/core/code/parse";
 import type { CodeLanguage, ImportKind } from "@/core/code/types";
 import { isEmptyPatch } from "@/core/model/patch";
@@ -19,7 +19,7 @@ import { cn } from "@/lib/cn";
 
 import { useDoc, useEditor, useEditorStore } from "../store/context";
 import { CodeEditor, type CodeEditorHandle } from "./CodeEditor";
-import { loadDraft, loadLanguage, saveDraft, saveLanguage } from "./drafts";
+import { loadDraft, loadGenerated, loadLanguage, saveDraft, saveGenerated, saveLanguage } from "./drafts";
 import { announce, applyCode, describePlan } from "./run-code";
 import { useParsedCode } from "./use-parsed-code";
 
@@ -45,7 +45,10 @@ const KIND_LABEL: Record<ImportKind, string> = {
 
 const plural = (count: number, noun: string): string => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
-type Notice = { kind: "note"; text: string } | { kind: "unsupported"; reason: string; example: string };
+type Notice = { kind: "note"; text: string } | { kind: "unsupported"; language: CodeLanguage; reason: string; example: string };
+
+const LANGUAGE_NAME: Record<CodeLanguage, string> = { mermaid: "Mermaid", plantuml: "PlantUML" };
+const OTHER: Record<CodeLanguage, CodeLanguage> = { mermaid: "plantuml", plantuml: "mermaid" };
 
 /* ----------------------------------------------------------------- status */
 
@@ -68,6 +71,14 @@ function Status({ parsed, fresh, preview, onJump }: { parsed: CodeParse; fresh: 
       ) : null}
       {preview && !parsed.empty ? (
         <p className="text-ink-3">{isEmptyPatch(preview.patch) ? "The canvas already matches this text." : `Applying will ${describePlan(preview, "future")}.`}</p>
+      ) : null}
+      {preview && !parsed.empty && (preview.patch.comments?.set?.length ?? 0) > 0 ? (
+        <p className="flex items-start gap-1.5 text-ink-2">
+          <TriangleAlert className="mt-px size-3.5 shrink-0 text-warn" />
+          <span>
+            {plural(preview.patch.comments?.set?.length ?? 0, "comment")} on shapes that are not in this text will be unpinned. They stay in the Comments tab.
+          </span>
+        </p>
       ) : null}
 
       {errors.length ? (
@@ -126,7 +137,10 @@ export function CodePanel() {
   const readOnly = useEditor((state) => state.readOnly);
   const editor = useRef<CodeEditorHandle>(null);
 
-  const [language, setLanguageState] = useState<CodeLanguage>(() => loadLanguage(diagramId));
+  const [language, setLanguageState] = useState<CodeLanguage>(
+    // Mermaid unless the diagram can only be said in PlantUML (a class diagram, say).
+    () => loadLanguage(diagramId) ?? (generateCode(store.getState().doc!, "mermaid").ok ? "mermaid" : generateCode(store.getState().doc!, "plantuml").ok ? "plantuml" : "mermaid"),
+  );
   const [texts, setTexts] = useState<Record<CodeLanguage, string>>(() => ({
     mermaid: loadDraft(diagramId, "mermaid"),
     plantuml: loadDraft(diagramId, "plantuml"),
@@ -137,6 +151,11 @@ export function CodePanel() {
   const [liveIssue, setLiveIssue] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   const [managed, setManaged] = useState<ReadonlySet<Id> | null>(null);
+  /** The text last written from the canvas, per language: what "stale" is measured against. */
+  const [generated, setGenerated] = useState<Record<CodeLanguage, string | null>>(() => ({
+    mermaid: loadGenerated(diagramId, "mermaid"),
+    plantuml: loadGenerated(diagramId, "plantuml"),
+  }));
 
   const text = texts[language];
   const { parsed, fresh } = useParsedCode(language, text, live ? LIVE_DELAY_MS : TYPING_DELAY_MS);
@@ -157,6 +176,10 @@ export function CodePanel() {
   useEffect(() => {
     saveLanguage(diagramId, language);
   }, [diagramId, language]);
+  useEffect(() => {
+    saveGenerated(diagramId, "mermaid", generated.mermaid);
+    saveGenerated(diagramId, "plantuml", generated.plantuml);
+  }, [diagramId, generated]);
 
   const setText = (value: string, forLanguage: CodeLanguage = language) => setTexts((current) => ({ ...current, [forLanguage]: value }));
 
@@ -175,6 +198,15 @@ export function CodePanel() {
 
   const current = (): CodeParse => (fresh && parsed ? parsed : parseCode(language, text));
 
+  /** The canvas now says what the editor's text says, so "changed since" is measured from here. */
+  const markSynced = useCallback(
+    (forLanguage: CodeLanguage) => {
+      const written = generateCode(store.getState().doc!, forLanguage);
+      if (written.ok) setGenerated((previous) => ({ ...previous, [forLanguage]: written.text }));
+    },
+    [store],
+  );
+
   const run = async (mode: CodeApplyMode) => {
     if (busy || readOnly) return;
     const result = current();
@@ -184,7 +216,10 @@ export function CodePanel() {
     announce(outcome, mode);
     if (outcome.status === "applied" || outcome.status === "unchanged") {
       appliedRef.current = result;
-      if (mode === "replace") own(new Set(outcome.plan.owned));
+      if (mode === "replace") {
+        own(new Set(outcome.plan.owned));
+        markSynced(language);
+      }
     }
   };
 
@@ -207,6 +242,7 @@ export function CodePanel() {
       const outcome = await applyCode(store, parsed, "replace", { managed: managedRef.current ?? undefined });
       if (outcome.status === "applied" || outcome.status === "unchanged") {
         own(new Set(outcome.plan.owned));
+        markSynced(parsed.language);
         setLiveIssue(null);
       } else if (outcome.status === "skipped") {
         // Held back (a drag is in progress): try the same text again shortly.
@@ -216,7 +252,7 @@ export function CodePanel() {
         setLiveIssue(outcome.reason);
       }
     });
-  }, [live, parsed, fresh, readOnly, store, own, retry]);
+  }, [live, parsed, fresh, readOnly, store, own, markSynced, retry]);
 
   /* A summary of what Apply would do, against the document as it is (deferred, so agents streaming edits do not make typing lag). */
   const shownDoc = useDeferredValue(doc);
@@ -231,18 +267,45 @@ export function CodePanel() {
 
   /* ------------------------------------------------------ generating */
 
-  const generate = () => {
-    const result = generateMermaid(store.getState().doc!);
+  /** What each language says about the canvas as it is now (deferred, like the preview above). */
+  const generations = useMemo(() => ({ mermaid: generateCode(shownDoc, "mermaid"), plantuml: generateCode(shownDoc, "plantuml") }), [shownDoc]);
+  const available = generations[language];
+  const alternative = generations[OTHER[language]];
+  const hasShapes = Object.keys(shownDoc.nodes).length > 0;
+
+  /** Writes the canvas as text into the editor. `quiet` is the automatic first fill: no toast, no notice. */
+  const fillFromDiagram = (quiet: boolean) => {
+    const current = store.getState().doc!;
+    const result = generateCode(current, language);
     if (!result.ok) {
-      setNotice({ kind: "unsupported", reason: result.reason, example: result.example });
+      if (!quiet) setNotice({ kind: "unsupported", language, reason: result.reason, example: result.example });
       return;
     }
-    replaceText(result.text, "mermaid", "Editor text replaced with the diagram's Mermaid.");
-    setNotice({ kind: "note", text: result.note });
+    if (quiet) setText(result.text);
+    else {
+      replaceText(result.text, language, `Editor text replaced with the diagram's ${LANGUAGE_NAME[language]}.`);
+      setNotice({ kind: "note", text: result.note });
+    }
+    setGenerated((previous) => ({ ...previous, [language]: result.text }));
     // The text mirrors the canvas, so everything on it is the code's to change.
     appliedRef.current = null;
-    own(new Set(Object.keys(store.getState().doc!.nodes)));
+    own(new Set(Object.keys(current.nodes)));
   };
+  const generate = () => fillFromDiagram(false);
+
+  /* An empty editor shows the diagram it belongs to, so the tab opens with something to read and edit. */
+  const filled = useRef(new Set<CodeLanguage>());
+  useEffect(() => {
+    if (filled.current.has(language) || !hasShapes || texts[language].trim() !== "") return;
+    filled.current.add(language);
+    fillFromDiagram(true);
+    // Runs when the language or the presence of shapes changes; the other values are read once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [language, hasShapes]);
+
+  /** The diagram says something different now than when the text was written. */
+  const stale = generated[language] !== null && available.ok && available.text !== generated[language];
+  const edited = generated[language] !== null && text !== generated[language];
 
   const examples = CODE_EXAMPLES[language];
   const marks = useMemo(
@@ -291,11 +354,44 @@ export function CodePanel() {
             <>
               <p>{notice.reason}</p>
               <pre className="my-2 overflow-x-auto rounded-md bg-raised p-2 font-mono text-[11px] leading-snug text-ink">{notice.example}</pre>
-              <Button size="sm" variant="secondary" onClick={() => replaceText(notice.example, "mermaid", "Loaded the Mermaid example.")}>
+              <Button size="sm" variant="secondary" onClick={() => replaceText(notice.example, notice.language, `Loaded the ${LANGUAGE_NAME[notice.language]} example.`)}>
                 Use this example
               </Button>
             </>
           )}
+        </div>
+      ) : null}
+
+      {!available.ok && hasShapes ? (
+        <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] text-ink-3">
+          <span>
+            {LANGUAGE_NAME[language]} cannot express this diagram.
+            {alternative.ok ? ` ${LANGUAGE_NAME[OTHER[language]]} can.` : " Neither format can say all of it; Generate explains why."}
+          </span>
+          {alternative.ok ? (
+            <button
+              type="button"
+              onClick={() => {
+                setLanguageState(OTHER[language]);
+                setNotice(null);
+              }}
+              className="font-medium text-accent underline-offset-2 hover:underline"
+            >
+              Switch to {LANGUAGE_NAME[OTHER[language]]}
+            </button>
+          ) : null}
+        </p>
+      ) : null}
+
+      {stale ? (
+        <div role="status" className="flex items-start gap-2 rounded-lg border border-line bg-sunken/60 p-2.5 text-[12px] text-ink-2">
+          <RefreshCw className="mt-px size-3.5 shrink-0 text-warn" />
+          <p className="min-w-0 flex-1">
+            The diagram changed since this text was written{edited ? ", and so did the text. Applying it now would overwrite those changes" : ""}.
+          </p>
+          <Button size="sm" variant="secondary" className="shrink-0" onClick={generate}>
+            Regenerate
+          </Button>
         </div>
       ) : null}
 
@@ -328,7 +424,7 @@ export function CodePanel() {
               <Toggle label="Live" checked={live} onChange={toggleLive} />
             </div>
           </Tip>
-          <Tip label="Fill the editor with the Mermaid for this diagram (flowcharts and sequence diagrams)" side="top">
+          <Tip label={`Fill the editor with the ${LANGUAGE_NAME[language]} for this diagram`} side="top">
             <Button size="sm" variant="ghost" onClick={generate} className="shrink-0">
               <WandSparkles className="size-3.5" />
               Generate from diagram

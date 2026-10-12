@@ -33,6 +33,7 @@ A live diagramming canvas that people and AI agents (over MCP) edit together. Ne
 
 | Doc | Read when |
 | --- | --- |
+| [docs/setup.md](docs/setup.md) | **setup**: installing or running the project on a new machine, env vars, Docker database, connecting agents |
 | [docs/architecture.md](docs/architecture.md) | **placing** new code, or tracing one change from UI to disk |
 | [docs/editor.md](docs/editor.md) | **editor UI**: store, canvas interactions, commands, panels, dialogs |
 | [docs/server.md](docs/server.md) | **server**: service layer, REST/SSE routes, realtime hub, new endpoint |
@@ -44,6 +45,7 @@ A live diagramming canvas that people and AI agents (over MCP) edit together. Ne
 | [docs/routing.md](docs/routing.md) | **routing**: connector routes, auto-layout |
 | [docs/exports.md](docs/exports.md) | **export/import**: SVG, PNG, PDF, PPTX, draw.io, Mermaid |
 | [docs/database.md](docs/database.md) | **database**: PostgreSQL in Docker, env vars, migrations, importing files |
+| [docs/auth.md](docs/auth.md) | **accounts**: team mode, roles, sessions, tokens, share links, presence, route authorization |
 | [docs/review.md](docs/review.md) | **review**: accept or reject agent changes, checkpoint comparison |
 | [docs/assistant.md](docs/assistant.md) | **assistant**: the in-app "Ask" panel running on the Claude API |
 | [docs/code-editor.md](docs/code-editor.md) | **code**: the Mermaid / PlantUML panel |

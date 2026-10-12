@@ -3,7 +3,7 @@
 import { CircleAlert, MessageSquareText, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import type { ChatEngineId } from "@/core/protocol";
+import type { ChatEngineId, LocalChatEngineId } from "@/core/protocol";
 import { Button, IconButton } from "@/components/ui/button";
 
 import { clearChat, retryLastMessage, sendChatMessage, stopChat, type SendOptions } from "./actions";
@@ -26,7 +26,7 @@ const drafts = new WeakMap<EditorStore, string>();
 const SUGGESTIONS_BLANK = ["Draw the architecture of …", "Sketch a login flow with error handling", "Create a sequence diagram for …"];
 const SUGGESTIONS_FILLED = ["Explain this diagram", "Tidy up this diagram", "Add error handling to the flow", "Find problems or missing pieces"];
 
-const isLocal = (engine: ChatEngineId): boolean => engine !== "claude-api";
+const isLocal = (engine: ChatEngineId): engine is LocalChatEngineId => engine !== "claude-api";
 
 function selectionNote(nodes: number, edges: number): string | null {
   const count = nodes + edges;
@@ -50,7 +50,7 @@ export function AskPanel() {
   const [draft, setDraft] = useState(() => drafts.get(store) ?? "");
   const [choice, setChoice] = useState<ChatEngineId | null>(() => preferredEngine());
   const [workdir, setWorkdir] = useState(() => savedWorkdir());
-  const [asking, setAsking] = useState<{ engine: "claude-code" | "codex"; prompt: string } | null>(null);
+  const [asking, setAsking] = useState<{ engine: LocalChatEngineId; prompt: string } | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   /** Follow new text unless the person scrolled up to read. */
@@ -59,10 +59,12 @@ export function AskPanel() {
   const engines = status?.engines ?? [];
   const selectedId: ChatEngineId = choice ?? status?.default ?? "claude-api";
   const selected = engines.find((engine) => engine.id === selectedId);
-  const noneAvailable = status !== null && status.default === null;
+  // The selected engine cannot answer: its setup steps replace the composer (the picker above stays usable).
+  const needsSetup = selected !== undefined && !selected.available;
+  const alternative = needsSetup ? engines.find((engine) => engine.available) : undefined;
   // If the status could not be fetched, let the person try: the server answers with the real reason.
   const canSend = selected ? selected.available : failed;
-  const ready = !noneAvailable && (status !== null || failed);
+  const ready = !needsSetup && (status !== null || failed);
   const usage = totalUsage(messages);
 
   const update = (value: string) => {
@@ -81,7 +83,7 @@ export function AskPanel() {
   const send = (text: string) => {
     const prompt = text.trim();
     if (!prompt || busy || readOnly || !canSend) return;
-    if (selectedId !== "claude-api" && !isAcknowledged(selectedId)) {
+    if (isLocal(selectedId) && !isAcknowledged(selectedId)) {
       setAsking({ engine: selectedId, prompt });
       return;
     }
@@ -90,7 +92,8 @@ export function AskPanel() {
 
   const choose = (engine: ChatEngineId) => {
     setChoice(engine);
-    setPreferredEngine(engine);
+    // Only a working engine becomes the remembered default; looking at an unavailable one's setup steps is not a preference.
+    if (engines.find((candidate) => candidate.id === engine)?.available) setPreferredEngine(engine);
   };
 
   // `assistant.open` asks for focus, possibly before this panel existed.
@@ -106,7 +109,7 @@ export function AskPanel() {
   useEffect(() => {
     const element = listRef.current;
     if (element && stuck.current) element.scrollTop = element.scrollHeight;
-  }, [messages, error, noneAvailable]);
+  }, [messages, error, needsSetup]);
 
   const chooseSuggestion = (text: string) => {
     if (text.endsWith("…")) {
@@ -161,9 +164,18 @@ export function AskPanel() {
         }}
         className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3"
       >
-        {noneAvailable ? <SetupCard checking={checking} onCheck={refresh} onConnectAgent={() => store.setState({ dialog: "agent" })} /> : null}
+        {needsSetup && selected ? (
+          <SetupCard
+            engine={selected}
+            alternative={alternative}
+            onUseAlternative={() => alternative && choose(alternative.id)}
+            checking={checking}
+            onCheck={refresh}
+            onConnectAgent={() => store.setState({ dialog: "agent" })}
+          />
+        ) : null}
 
-        {!noneAvailable && messages.length === 0 ? (
+        {!needsSetup && messages.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-4 px-1 py-6 text-center">
             <div>
               <MessageSquareText className="mx-auto mb-2 size-5 text-ink-3" />

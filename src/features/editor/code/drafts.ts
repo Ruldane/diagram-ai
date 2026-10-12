@@ -29,17 +29,39 @@ export function saveDraft(diagramId: Id, language: CodeLanguage, text: string): 
   }
 }
 
-export function loadLanguage(diagramId: Id): CodeLanguage {
+/** The language last used for this diagram, or null when the person has not chosen one yet. */
+export function loadLanguage(diagramId: Id): CodeLanguage | null {
   try {
-    return window.sessionStorage.getItem(languageKey(diagramId)) === "plantuml" ? "plantuml" : "mermaid";
+    const stored = window.sessionStorage.getItem(languageKey(diagramId));
+    return stored === "plantuml" || stored === "mermaid" ? stored : null;
   } catch {
-    return "mermaid";
+    return null;
   }
 }
 
 export function saveLanguage(diagramId: Id, language: CodeLanguage): void {
   try {
     window.sessionStorage.setItem(languageKey(diagramId), language);
+  } catch {
+    // See above.
+  }
+}
+
+const generatedKey = (diagramId: Id, language: CodeLanguage): string => `diagram-ai:code-generated:${diagramId}:${language}`;
+
+/** The text last written from the canvas, kept so "the diagram changed since" survives switching tabs. */
+export function loadGenerated(diagramId: Id, language: CodeLanguage): string | null {
+  try {
+    return window.sessionStorage.getItem(generatedKey(diagramId, language));
+  } catch {
+    return null;
+  }
+}
+
+export function saveGenerated(diagramId: Id, language: CodeLanguage, text: string | null): void {
+  try {
+    if (text !== null) window.sessionStorage.setItem(generatedKey(diagramId, language), text);
+    else window.sessionStorage.removeItem(generatedKey(diagramId, language));
   } catch {
     // See above.
   }

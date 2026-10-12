@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getService } from "@/server/context";
+import { requestContext } from "@/server/auth/request";
 import { assertSameOrigin, humanActor, json, route } from "@/server/http";
 
 const bodySchema = z.object({
@@ -14,6 +14,7 @@ const bodySchema = z.object({
 export const POST = route(async (request: Request) => {
   assertSameOrigin(request);
   const { clientId, ...input } = bodySchema.parse(await request.json());
-  const { doc, warnings } = await getService().importDiagram(input, humanActor(clientId));
+  const { service } = await requestContext(request);
+  const { doc, warnings } = await service.importDiagram(input, humanActor(clientId));
   return json({ diagram: doc, warnings }, { status: 201 });
 });

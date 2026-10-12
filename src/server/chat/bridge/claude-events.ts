@@ -40,6 +40,15 @@ function resultText(content: unknown): string {
   return content.map((block) => (isObject(block) && block.type === "text" ? str(block.text) : "")).filter(Boolean).join("\n");
 }
 
+/** The one line for a failed built-in tool. A refusal says what was refused; anything else is the start of its message. */
+function failureSummary(text: string): string {
+  const refused = /^Permission to use (\S+) has been denied/.exec(text.trim());
+  if (refused) return `Not allowed to use ${refused[1]} here`;
+  const first = text.split(/\r?\n/).map((line) => line.replace(/\s+/g, " ").trim()).find(Boolean) ?? "";
+  if (!first) return "Failed";
+  return first.length > 160 ? `${first.slice(0, 159)}…` : first;
+}
+
 const SIGNED_OUT = /not logged in|please run \/login|\/login|invalid api key|authentication_error|oauth token|credentials/i;
 
 /** Message for a `result` line that reports an error. */
@@ -143,7 +152,7 @@ export function createClaudeMapper(emit: (event: ChatStreamEvent) => void, optio
       if (name.startsWith("diagram_")) {
         sink.toolDone(id, name, tool);
       } else {
-        const summary = failed ? tailMessage(text, 160) || "Failed" : (builtinSummary(name, sink.inputOf(id)) ?? name);
+        const summary = failed ? failureSummary(text) : (builtinSummary(name, sink.inputOf(id)) ?? name);
         sink.toolDoneWith(id, name, failed ? "error" : "done", summary, text.slice(0, 1500));
       }
     }

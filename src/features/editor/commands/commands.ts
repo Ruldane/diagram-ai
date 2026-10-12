@@ -273,8 +273,15 @@ export function getCommand(id: string): Command | undefined {
   return byId.get(id);
 }
 
+/** What a viewer may still do: look around, select, export, read history. Everything else changes the document. */
+const VIEWER_COMMANDS = new Set(["tool.select", "tool.pan", "edit.select-all", "edit.escape", "diagram.command", "diagram.export", "diagram.history", "diagram.shortcuts", "diagram.agent", "review.open"]);
+/** View commands that nevertheless write document settings. */
+const VIEW_THAT_WRITES = new Set(["view.grid", "view.snap"]);
+
 export function isEnabled(command: Command, state: EditorState): boolean {
-  return state.status === "ready" && (command.enabled?.(state) ?? true);
+  if (state.status !== "ready") return false;
+  if (state.readOnly && !VIEWER_COMMANDS.has(command.id) && (command.group !== "View" || VIEW_THAT_WRITES.has(command.id))) return false;
+  return command.enabled?.(state) ?? true;
 }
 
 export function runCommand(store: EditorStore, id: string): boolean {

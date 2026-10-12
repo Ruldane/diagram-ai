@@ -36,6 +36,10 @@ Read the PNGs (they are images the model can view). `.gallery/` is git-ignored.
 
 `node scripts/mcp-smoke.mjs <baseUrl> [agent]` creates diagrams, draws, comments, previews, exports and checks each response against the real server. Run it against a scratch server (below), never against someone's workspace.
 
+## Accounts and sharing
+
+`npx vitest run` covers hashing, tokens, cookies, rate limits, authorship rewriting, the authorization wrappers (IDOR matrix against fakes) and a scan that every API route checks its caller (`src/server/auth/*.test.ts`). Against a real PostgreSQL, `src/server/auth/auth.db.test.ts` runs sign-up policy, sessions, tokens, members, links and ownership end to end (`DATABASE_URL_TEST=... npm run test:db`); `mode.db.test.ts` drives the route handlers with accounts off, then on, then off again against one database, including the first-account takeover. For the browser flows start a scratch server with `DATABASE_URL` pointing at a throw-away database (see [database.md](database.md)), `DIAGRAM_AI_AUTH=on`, a scratch `DIAGRAM_DATA_DIR` and `NEXT_DIST_DIR`, and drive two headless Chromium contexts (an owner and a link visitor) to check sign-up, the share dialog, read-only mode and live cursors; screenshot light and dark.
+
 ## Scratch servers and data hygiene
 
 `./data` holds the user's diagrams and port 3000 is their dev server. For your own runs:

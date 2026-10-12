@@ -1,4 +1,6 @@
 import { getDiagramType } from "../catalog";
+import { edgeKindStyle, isEdgeKind } from "../edges/kinds";
+import { plantUmlOperator } from "../io/plantuml-export";
 import { withIntegrity } from "../model/integrity";
 import { slugify } from "../model/ids";
 import { applyPatch } from "../model/patch";
@@ -258,7 +260,10 @@ function planElements(doc: DiagramDoc, imported: CodeImport, mode: CodeApplyMode
     const current = base.edges[id];
     if (!current) continue;
     // A connector that already reads the same in text keeps its exact style (custom markers survive).
-    const sameInText = imported.kind === "flowchart" && sameValue(mermaidLinkOf(current.style), { ...(source.kind ? { kind: source.kind } : {}), ...(source.style ? { style: source.style } : {}) });
+    const sameInText =
+      imported.kind === "flowchart"
+        ? sameValue(mermaidLinkOf(current.style), { ...(source.kind ? { kind: source.kind } : {}), ...(source.style ? { style: source.style } : {}) })
+        : plantUmlOperator(current.style) === plantUmlOperator(source.kind && isEdgeKind(source.kind) ? edgeKindStyle(source.kind) : source.style);
     if (sameInText) keepStyle.add(id);
     edgeEdits[id] = withoutCodeFields(current, sameInText);
   }

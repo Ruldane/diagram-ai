@@ -1,4 +1,5 @@
 import type { DiagramDoc, DiagramSummary } from "@/core/model/types";
+import type { DiagramAccess } from "@/core/auth";
 import type { ApiError, CreateDiagramRequest, DiagramResponse, ListDiagramsResponse } from "@/core/protocol";
 
 export type ImportFormat = "json" | "drawio" | "mermaid";
@@ -29,6 +30,11 @@ async function request<T>(path: string, init?: RequestInit & { json?: unknown })
     throw new Error("Could not reach the server. Is it still running?");
   }
   const body: unknown = await response.json().catch(() => null);
+  if (response.status === 401 && typeof window !== "undefined") {
+    // Accounts on and the session ended (or never existed): the sign-in page, then back here.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- a full load drops everything the previous session left in memory
+    window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
+  }
   if (!response.ok) {
     const message = body && typeof body === "object" && "error" in body ? (body as ApiError).error : null;
     throw new Error(typeof message === "string" && message ? message : `Request failed (${response.status}).`);
@@ -38,8 +44,14 @@ async function request<T>(path: string, init?: RequestInit & { json?: unknown })
 
 export const errorMessage = (error: unknown): string => (error instanceof Error && error.message ? error.message : "Something went wrong.");
 
+/** Accounts on: the caller’s role on each diagram of the latest list. Empty in solo mode. */
+let latestAccess: Record<string, DiagramAccess> = {};
+export const getDiagramAccess = (): Record<string, DiagramAccess> => latestAccess;
+
 export async function listDiagrams(signal?: AbortSignal): Promise<DiagramSummary[]> {
-  return (await request<ListDiagramsResponse>("/api/diagrams", { signal })).diagrams;
+  const response = await request<ListDiagramsResponse>("/api/diagrams", { signal });
+  latestAccess = response.access ?? {};
+  return response.diagrams;
 }
 
 export async function createDiagram(input: CreateDiagramRequest): Promise<DiagramDoc> {

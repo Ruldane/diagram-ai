@@ -5,7 +5,7 @@ import { defaultBridgeWorkdir } from "./workdir";
 
 /**
  * What the app may know about a CLI's login: whether it is signed in and how
- * (`claude.ai`, `api_key`, `chatgpt`…). It comes only from the CLI's own
+ * (`claude.ai`, `api_key`…). It comes only from the CLI's own
  * status command. The app never opens, reads or copies credential files or
  * tokens, and offers no sign-in.
  */
@@ -57,13 +57,6 @@ function parseClaude(out: string, code: number | null): LoginState {
   }
 }
 
-function parseCodex(out: string, code: number | null): LoginState {
-  if (code === 0 && /logged in/i.test(out) && !/not logged in/i.test(out)) {
-    return { installed: true, loggedIn: true, authMethod: /api key/i.test(out) ? "api_key" : /chatgpt/i.test(out) ? "chatgpt" : undefined };
-  }
-  return { installed: true, loggedIn: false, problem: "Not signed in. Run `codex login` in a terminal." };
-}
-
 /** Login state of a CLI, cached for 30 seconds. `machine` is only for tests of binary resolution. */
 export async function loginState(cli: CliName, machine?: Machine): Promise<LoginState> {
   const key = cli;
@@ -73,13 +66,13 @@ export async function loginState(cli: CliName, machine?: Machine): Promise<Login
   const binary = resolveBinary(cli, machine);
   let state: LoginState;
   if (!binary) {
-    state = { installed: false, loggedIn: false, problem: `${cli === "claude" ? "Claude Code" : "Codex"} was not found. Install it, then reload.` };
+    state = { installed: false, loggedIn: false, problem: "Claude Code was not found. Install it, then reload." };
   } else {
-    const run = await runStatus(cli, binary, cli === "claude" ? ["auth", "status"] : ["login", "status"]);
+    const run = await runStatus(cli, binary, ["auth", "status"]);
     if (run.spawnError) {
-      state = { installed: false, loggedIn: false, problem: `${cli === "claude" ? "Claude Code" : "Codex"} could not be started.` };
+      state = { installed: false, loggedIn: false, problem: "Claude Code could not be started." };
     } else {
-      state = cli === "claude" ? parseClaude(run.out, run.code) : parseCodex(run.out, run.code);
+      state = parseClaude(run.out, run.code);
     }
   }
   cache().set(key, { at: Date.now(), state });

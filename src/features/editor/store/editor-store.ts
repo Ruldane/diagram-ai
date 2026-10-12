@@ -1,5 +1,6 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
 
+import type { PublicUser, Role } from "@/core/auth";
 import { clamp, union } from "@/core/geometry/basics";
 import { newClientId } from "@/core/model/ids";
 import { withIntegrity } from "@/core/model/integrity";
@@ -113,6 +114,9 @@ export interface EditorState {
   peers: PeerInfo[];
   /** Viewer role: the document cannot be edited from this tab. */
   readOnly: boolean;
+  /** Accounts on: what this person may do here, and who they are. Solo mode: owner, nobody. */
+  role: Role;
+  me: PublicUser | null;
   /** Presentation mode: index of the frame being shown. */
   presenting: { frame: number } | null;
   chat: ChatState;
@@ -207,6 +211,8 @@ export function createEditorStore(diagramId: Id): EditorStore {
       compare: null,
       peers: [],
       readOnly: false,
+      role: "owner",
+      me: null,
       presenting: null,
       chat: { messages: [], busy: false, error: null },
       panel: "design",
@@ -227,8 +233,9 @@ export function createEditorStore(diagramId: Id): EditorStore {
       },
 
       apply(patch) {
-        const { doc, gestureBase, emit, readOnly } = get();
-        if (!doc || readOnly) return;
+        const { doc, gestureBase, emit, readOnly, presenting } = get();
+        // A slide show does not edit; agents' changes still arrive through `applyRemote`.
+        if (!doc || readOnly || presenting) return;
         if (gestureBase) return get().applyTransient(patch);
         const complete = withIntegrity(doc, patch);
         const result = applyPatch(doc, complete);
@@ -264,8 +271,8 @@ export function createEditorStore(diagramId: Id): EditorStore {
       },
 
       applyTransient(patch) {
-        const { doc } = get();
-        if (!doc) return;
+        const { doc, readOnly } = get();
+        if (!doc || readOnly) return;
         const result = applyPatch(doc, patch);
         if (result.changed) set({ doc: result.doc });
       },
@@ -291,9 +298,9 @@ export function createEditorStore(diagramId: Id): EditorStore {
       },
 
       undo() {
-        const { doc, undoStack, redoStack, emit, gestureBase } = get();
+        const { doc, undoStack, redoStack, emit, gestureBase, readOnly } = get();
         const entry = undoStack[undoStack.length - 1];
-        if (!doc || !entry || gestureBase) return;
+        if (!doc || !entry || gestureBase || readOnly) return;
         const result = applyPatch(doc, entry.inverse);
         set((state) => ({
           doc: result.doc,
@@ -305,9 +312,9 @@ export function createEditorStore(diagramId: Id): EditorStore {
       },
 
       redo() {
-        const { doc, undoStack, redoStack, emit, gestureBase } = get();
+        const { doc, undoStack, redoStack, emit, gestureBase, readOnly } = get();
         const entry = redoStack[redoStack.length - 1];
-        if (!doc || !entry || gestureBase) return;
+        if (!doc || !entry || gestureBase || readOnly) return;
         const result = applyPatch(doc, entry.inverse);
         set((state) => ({
           doc: result.doc,
@@ -330,6 +337,8 @@ export function createEditorStore(diagramId: Id): EditorStore {
       },
 
       setTool(tool, shape = null) {
+        // A viewer can look and point, never draw.
+        if (get().readOnly && tool !== "select" && tool !== "pan") return;
         set({ tool, toolShape: tool === "shape" ? shape : null, overlay: {}, draftComment: null });
       },
 
@@ -349,7 +358,7 @@ export function createEditorStore(diagramId: Id): EditorStore {
         const { canvasSize, paletteOpen, panel } = get();
         if (!canvasSize.w || !canvasSize.h) return;
         // Frame the region inside the area not covered by panels (when the window is wide enough to have one).
-        const left = paletteOpen ? CHROME.palette : 0;
+        const left = paletteOpen && !get().readOnly ? CHROME.palette : 0;
         const right = panel ? CHROME.panel : 0;
         const roomy = canvasSize.w - left - right > 320;
         const area = {

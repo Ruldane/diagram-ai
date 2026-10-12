@@ -6,18 +6,21 @@ import { describeChatError, MISSING_KEY_MESSAGE } from "@/server/chat/errors";
 import { chatRequestSchema, normalizeHistory } from "@/server/chat/request";
 import { claimChatRun } from "@/server/chat/run-lock";
 import { ndjsonResponse } from "@/server/chat/stream";
-import { getContext } from "@/server/context";
+import { requestContext } from "@/server/auth/request";
 import { assertSameOrigin, json, route } from "@/server/http";
 
 /**
  * The in-app assistant. Streams newline-delimited JSON `ChatStreamEvent`s
- * while an engine (the Claude API, or the person's own Claude Code / Codex
- * CLI) drives the same diagram tools MCP clients get, so the canvas updates
- * live exactly as it does for an external agent.
+ * while an engine (the Claude API, or the person's own Claude Code CLI) drives
+ * the same diagram tools MCP clients get, so the canvas updates live exactly
+ * as it does for an external agent.
  */
 export const POST = route(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   assertSameOrigin(request);
   const { id } = await params;
+  // Accounts on: the assistant edits the diagram, so it needs editor access; its changes are credited to this person.
+  const { service, hub, access } = await requestContext(request);
+  await access.require(id, "editor");
   const body = chatRequestSchema.parse(await request.json());
   const history = normalizeHistory(body.messages);
 
@@ -37,7 +40,6 @@ export const POST = route(async (request: Request, { params }: { params: Promise
   }
   const workdir = engine.local && body.workdir ? validateWorkdir(body.workdir) : undefined;
 
-  const { service, hub } = getContext();
   const doc = await service.get(id);
   if (body.clientId && body.selection) {
     service.setPresence(id, { clientId: body.clientId, selection: body.selection, viewport: body.viewport });
@@ -46,7 +48,7 @@ export const POST = route(async (request: Request, { params }: { params: Promise
 
   const release = claimChatRun(id);
   try {
-    const ctx = { service, hub, actor: ASSISTANT_ACTOR, baseUrl: new URL(request.url).origin };
+    const ctx = { service, hub, actor: access.agentActor(ASSISTANT_ACTOR), baseUrl: new URL(request.url).origin };
     return ndjsonResponse(request, async (emit, signal) => {
       try {
         await engine.run({ ctx, doc, history, selection, sessionId: body.sessionId, workdir, emit, signal });

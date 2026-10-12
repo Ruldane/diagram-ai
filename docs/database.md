@@ -8,7 +8,7 @@ How diagrams are stored in PostgreSQL instead of JSON files: running it locally,
 npm run db:up          # starts the container "diagram-ai-postgres" and waits until it is healthy
 echo "DATABASE_URL=postgres://diagram_ai:diagram_ai@127.0.0.1:5435/diagram_ai" >> .env.local
 npm run dev            # logs "Storage: PostgreSQL at 127.0.0.1:5435/diagram_ai"
-curl localhost:3000/api/health      # {"ok":true,"storage":"postgres","migrations":1}
+curl localhost:3000/api/health      # {"ok":true,"storage":"postgres","migrations":2}
 npm run db:import-files             # optional: copy the diagrams from ./data into the database
 ```
 
@@ -30,16 +30,18 @@ Ports 5432 to 5434 are commonly taken by other local databases, so the container
 | `DATABASE_URL` | unset | Connection string. Set means PostgreSQL, unset means files. Add `?sslmode=require` for a hosted database. |
 | `DIAGRAM_AI_AUTO_MIGRATE` | on | `0` skips migrating on first use; the app then refuses to start storage while migrations are pending. |
 | `DIAGRAM_AI_PG_PORT` | `5435` | Host port of the bundled container. |
+| `DIAGRAM_AI_AUTH`, `DIAGRAM_AI_SIGNUP`, `DIAGRAM_AI_TRUST_PROXY` | see [auth.md](auth.md) | A database alone never turns on accounts or logins; `DIAGRAM_AI_AUTH=on` does (it needs `DATABASE_URL`). |
 | `DATABASE_URL_TEST` | unset | Database for `npm run test:db`. |
 
 ## Schema and migrations
 
 | Table | Holds |
 | --- | --- |
-| `diagrams` | One row per diagram: the whole `DiagramDoc` as `doc jsonb`, plus `name`, `type`, `version`, timestamps and the denormalised `node_count`, `edge_count`, `open_comments` that listings read. `owner_id` is reserved for accounts. |
+| `diagrams` | One row per diagram: the whole `DiagramDoc` as `doc jsonb`, plus `name`, `type`, `version`, timestamps and the denormalised `node_count`, `edge_count`, `open_comments` that listings read. `owner_id` is the owning account ([auth.md](auth.md)). |
 | `diagram_snapshots` | Checkpoints, keyed `(diagram_id, id)`, newest `MAX_SNAPSHOTS` kept per diagram. |
 | `diagram_review_bases` | The baseline agent changes are reviewed against. |
 | `diagram_ops` | Append-only change log: `(diagram_id, version, actor, patch)`, newest `MAX_OPS_PER_DIAGRAM` (5,000) kept; trimmed every ~100 entries, so it may briefly exceed that. |
+| `users`, `sessions`, `api_tokens`, `diagram_members`, `share_links` | Accounts and sharing (migration `002_auth.sql`), see [auth.md](auth.md). Only the hash of a session, token or link is stored. |
 | `schema_migrations` | Applied migrations with a checksum. |
 
 Rows reference `diagrams` with `ON DELETE CASCADE`: deleting a diagram removes its checkpoints, baseline and log.
@@ -99,18 +101,13 @@ DATABASE_URL_TEST=postgres://diagram_ai:diagram_ai@127.0.0.1:5435/diagram_ai npm
 
 Each run works in its own temporary schema and drops it, so pointing it at the development database is safe. For a throw-away server: `docker run --rm -d --name diagram-ai-test-pg -e POSTGRES_USER=diagram_ai -e POSTGRES_PASSWORD=diagram_ai -e POSTGRES_DB=diagram_ai --tmpfs /var/lib/postgresql/data -p 127.0.0.1::5432 postgres:17`, then `docker port diagram-ai-test-pg 5432` for the port.
 
-## Reserved for accounts
+## Accounts
 
-Not implemented. The next phase adds these without changing existing tables beyond giving `diagrams.owner_id` a foreign key:
+Implemented by migration `002_auth.sql` (tables in the schema list above); the rules are in [auth.md](auth.md).
 
-```sql
-users            (id text PK, email text UNIQUE, name text, password_hash text NULL, created_at timestamptz)
-diagram_members  (diagram_id text REFERENCES diagrams ON DELETE CASCADE, user_id text REFERENCES users ON DELETE CASCADE,
-                  role text CHECK (role IN ('owner','editor','commenter','viewer')), PRIMARY KEY (diagram_id, user_id))
-share_links      (token_hash text PK, diagram_id text REFERENCES diagrams ON DELETE CASCADE, role text,
-                  created_by text REFERENCES users, expires_at timestamptz NULL, revoked_at timestamptz NULL)
-```
+Accounts are opt-in: with only `DATABASE_URL` set, diagrams are stored here without owners and the app behaves like file mode (no login). The tables below stay empty until `DIAGRAM_AI_AUTH=on`.
 
-- Store only a hash of share-link tokens. Authorisation lives in the service layer; repository reads gain a viewer filter (`WHERE owner_id = $1 OR id IN (SELECT diagram_id FROM diagram_members …)`, served by `diagrams_owner_idx`).
-- Rows written before accounts have a null `owner_id`; assign them with `import-files --owner <id> --overwrite` or one `UPDATE`.
-- Human `Actor.id` values already appear in `diagram_ops.actor` and checkpoint authors; map them to `users.id` when sessions exist.
+- `diagrams.owner_id` holds the owning account, and is null for diagrams made without accounts. It has **no foreign key** on purpose: `import-files --owner <anything>` may name nobody. The first account to register claims every diagram whose owner is null or not an account, in one transaction, and also gets a `diagram_members` row of role `owner`. `npm run auth -- claim <email>` does the same later for diagrams made while accounts were off again.
+- `npm run db:import-files -- --owner <email or account id>` imports files as that account's diagrams (an email must belong to an account). Any other value is stored as given and claimed later.
+- Authorisation reads `diagrams.owner_id` and `diagram_members`; share links live in `share_links`. Listings filter by that (`AuthStore.accessList`).
+- Human `Actor.id` in `diagram_ops.actor` and checkpoint authors is the account id for edits made while signed in; agents are `<agent>@<account id>` with `ownerId`.

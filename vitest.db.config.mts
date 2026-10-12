@@ -18,7 +18,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/server/store/postgres.test.ts", "src/server/db/**/*.db.test.ts"],
+    include: ["src/server/store/postgres.test.ts", "src/server/db/**/*.db.test.ts", "src/server/auth/**/*.db.test.ts"],
     fileParallelism: false,
     testTimeout: 30_000,
     hookTimeout: 60_000,

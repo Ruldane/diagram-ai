@@ -8,7 +8,7 @@ import type { DiagramDoc, DNode, Patch } from "../model/types";
 import { importMermaid, exportMermaid } from "../io/mermaid";
 import { planCodeApply, type CodeApplyMode, type CodePlan, type CodePlanOptions } from "./apply";
 import { CODE_EXAMPLES } from "./examples";
-import { generateMermaid } from "./generate";
+import { generateCode, generateMermaid } from "./generate";
 import { placePlan } from "./layout";
 import { parseCode } from "./parse";
 import type { CodeLanguage } from "./types";
@@ -444,4 +444,21 @@ describe("code examples", () => {
       });
     }
   }
+});
+
+describe("generateCode", () => {
+  it("writes the same canvas in either language, and says why when one cannot", async () => {
+    const { doc } = await apply(empty(), FLOW);
+    const mermaid = generateCode(doc, "mermaid");
+    const plantuml = generateCode(doc, "plantuml");
+    expect(mermaid.ok).toBe(true);
+    // A flowchart's decisions and terminators are not PlantUML activity or structure shapes.
+    expect(plantuml.ok).toBe(false);
+    if (!plantuml.ok) expect(plantuml.reason).toMatch(/PlantUML/);
+
+    const classes = await apply(empty(), "@startuml\nclass A\nclass B\nA --|> B\n@enduml", "replace", "plantuml");
+    expect(generateCode(classes.doc, "mermaid").ok).toBe(false);
+    const text = generateCode(classes.doc, "plantuml");
+    expect(text.ok && text.kind).toBe("class");
+  });
 });

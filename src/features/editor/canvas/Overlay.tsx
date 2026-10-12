@@ -31,6 +31,7 @@ const ACCENT = "var(--accent)";
 
 /** Outline, resize handles and rotate handle of the single selected node. */
 function NodeHandles({ node, zoom }: { node: DNode; zoom: number }) {
+  const readOnly = useEditor((state) => state.readOnly);
   const s = 8 / zoom;
   const def = getShape(node.shape);
   const corners = def.keepAspect ? HANDLES.filter(([name]) => name.length === 2) : HANDLES;
@@ -40,7 +41,7 @@ function NodeHandles({ node, zoom }: { node: DNode; zoom: number }) {
   return (
     <g transform={`matrix(${nodeMatrix(node).join(" ")})`}>
       <rect width={node.w} height={node.h} fill="none" stroke={ACCENT} strokeWidth={1.5} vectorEffect="non-scaling-stroke" pointerEvents="none" />
-      {node.locked ? null : (
+      {node.locked || readOnly ? null : (
         <>
           <line x1={node.w / 2} y1={0} x2={node.w / 2} y2={-rotateOffset} stroke={ACCENT} strokeWidth={1} vectorEffect="non-scaling-stroke" pointerEvents="none" />
           <circle
@@ -122,11 +123,12 @@ export function Overlay({ display }: { display: ReturnType<typeof useDisplay> })
   const editing = useEditor((state) => state.editing);
   const tool = useEditor((state) => state.tool);
   const dragging = useEditor((state) => state.gestureBase !== null);
+  const readOnly = useEditor((state) => state.readOnly);
 
   const nodes = selection.map((id) => display.nodes[id]).filter(Boolean);
   const edges = selection.map((id) => ({ id, edge: display.edges[id], geometry: display.routes.get(id) })).filter((e) => e.edge && e.geometry);
   const single = nodes.length === 1 && edges.length === 0 ? nodes[0] : null;
-  const interactive = (tool === "select" || tool === "connect") && !dragging && !editing;
+  const interactive = (tool === "select" || tool === "connect") && !dragging && !editing && !readOnly;
 
   // Ports show on the hovered node, or on the single selected one.
   const portNode = interactive && !overlay.connect ? (hovered && display.nodes[hovered] ? display.nodes[hovered] : single) : null;
@@ -140,7 +142,7 @@ export function Overlay({ display }: { display: ReturnType<typeof useDisplay> })
       {edges.map(({ id, geometry }) => (
         <g key={id}>
           <path d={pathToSvg(geometry!.path)} fill="none" stroke={ACCENT} strokeWidth={3} strokeOpacity={0.35} vectorEffect="non-scaling-stroke" pointerEvents="none" />
-          {edges.length === 1 && nodes.length === 0 && !editing
+          {edges.length === 1 && nodes.length === 0 && !editing && !readOnly
             ? (["from", "to"] as const).map((end) => {
                 const p = end === "from" ? geometry!.start : geometry!.end;
                 return (

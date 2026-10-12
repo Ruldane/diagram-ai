@@ -41,6 +41,7 @@ export function SidePanel() {
   const openComments = useEditor((state) => Object.values(state.doc!.comments).filter((c) => !c.resolved).length);
   const working = useEditor((state) => state.agents.some((agent) => agent.status === "working"));
   const reviewing = useEditor((state) => Boolean(state.review?.active));
+  const readOnly = useEditor((state) => state.readOnly);
   if (!panel) return null;
 
   /** Small indicator on a tab that has something waiting. */
@@ -83,7 +84,10 @@ export function SidePanel() {
         </IconButton>
       </header>
       <div role="tabpanel" className="min-h-0 flex-1 overflow-y-auto">
-        {PANELS[panel]()}
+        {/* A viewer reads everything and changes nothing: every control inside is disabled in one place. */}
+        <fieldset disabled={readOnly} className="contents">
+          {PANELS[panel]()}
+        </fieldset>
       </div>
     </aside>
   );

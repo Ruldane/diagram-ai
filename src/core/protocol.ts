@@ -1,3 +1,4 @@
+import type { DiagramAccess, DiagramViewer } from "./auth";
 import type { Actor, DiagramDoc, DiagramSummary, Id, Patch } from "./model/types";
 
 /**
@@ -40,6 +41,8 @@ export interface AgentInfo {
   diagramId?: Id;
   /** Tool currently (or last) being run, for the status line. */
   tool?: string;
+  /** Accounts on: the account the agent acts for. */
+  ownerId?: string;
 }
 
 /** How the browser should present a remote patch. */
@@ -64,6 +67,8 @@ export interface PeerInfo {
   /** Stable per browser tab. */
   id: string;
   name: string;
+  /** Accounts on: the account behind the tab, so several tabs of one person can share an avatar. */
+  userId?: string;
   /** CSS colour assigned by the server. */
   color: string;
   /** Pointer position in world coordinates, when known. */
@@ -112,6 +117,8 @@ export interface SnapshotInfo {
 
 export interface ListDiagramsResponse {
   diagrams: DiagramSummary[];
+  /** Accounts on: the caller's role on each diagram, and whose it is. Absent in solo mode. */
+  access?: Record<Id, DiagramAccess>;
 }
 
 export interface CreateDiagramRequest {
@@ -124,6 +131,8 @@ export interface CreateDiagramRequest {
 
 export interface DiagramResponse {
   diagram: DiagramDoc;
+  /** The caller's role on this diagram (accounts on), so the editor can be read-only for viewers. */
+  viewer?: DiagramViewer;
 }
 
 export interface OpsRequest {
@@ -189,10 +198,13 @@ export type ChatStreamEvent =
   | { type: "done" };
 
 /**
- * Where the assistant's model runs. `claude-code` and `codex` drive the
- * person's own locally installed CLI; `claude-api` calls the API with a key.
+ * Where the assistant's model runs. `claude-code` drives the person's own
+ * locally installed Claude Code CLI; `claude-api` calls the API with a key.
  */
-export type ChatEngineId = "claude-code" | "codex" | "claude-api";
+export type ChatEngineId = "claude-code" | "claude-api";
+
+/** Engines that run a program on this computer with the person's own login (they need an acknowledgement). */
+export type LocalChatEngineId = Exclude<ChatEngineId, "claude-api">;
 
 export interface ChatEngineStatus {
   id: ChatEngineId;
@@ -204,7 +216,7 @@ export interface ChatEngineStatus {
   billing: "subscription" | "api";
   /** The first use needs the person's explicit opt-in (see `core/chat-terms.ts`). */
   needsAcknowledgement: boolean;
-  /** How the CLI is logged in (`claude.ai`, `api_key`, `chatgpt`…), never a credential. */
+  /** How the CLI is logged in (`claude.ai`, `api_key`…), never a credential. */
   authMethod?: string;
   /** Model in use, when the app decides it. */
   model?: string;
@@ -213,7 +225,7 @@ export interface ChatEngineStatus {
 /** `GET /api/chat/status`. Never includes a key or token. */
 export interface ChatStatusResponse {
   engines: ChatEngineStatus[];
-  /** Preferred engine among the available ones: claude-code, codex, then claude-api. `null` when none is. */
+  /** Preferred engine among the available ones: claude-code, then claude-api. `null` when none is. */
   default: ChatEngineId | null;
 }
 

@@ -6,7 +6,9 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { DiagramSummary } from "@/core/model/types";
 import { cn } from "@/lib/cn";
+import { DiagramFilter, filterDiagrams, type OwnershipFilter } from "@/features/auth/DiagramFilter";
 
+import { getDiagramAccess } from "./api";
 import { DeleteDiagramDialog } from "./DeleteDiagramDialog";
 import { DiagramCard } from "./DiagramCard";
 import { Reveal } from "./Reveal";
@@ -78,6 +80,7 @@ export function DiagramsSection() {
   const now = useNow();
   const [expanded, setExpanded] = useState(false);
   const [deleting, setDeleting] = useState<DiagramSummary | null>(null);
+  const [filter, setFilter] = useState<OwnershipFilter>("all");
 
   // A dialog is transient: do not come back to it open after navigating away.
   useLayoutEffect(() => () => setDeleting(null), []);
@@ -92,7 +95,16 @@ export function DiagramsSection() {
     setDeleting(diagram);
   };
 
-  const diagrams = state.status === "ready" ? state.diagrams : [];
+  const everything = state.status === "ready" ? state.diagrams : [];
+  // Accounts on: the list says whose diagrams these are, so it can be narrowed to "mine" or "shared with me".
+  const access = getDiagramAccess();
+  const teamMode = Object.keys(access).length > 0;
+  const diagrams = teamMode ? filterDiagrams(everything, access, filter) : everything;
+  const counts = {
+    all: everything.length,
+    mine: filterDiagrams(everything, access, "mine").length,
+    shared: filterDiagrams(everything, access, "shared").length,
+  };
   const visible = expanded ? diagrams : diagrams.slice(0, INITIAL_COUNT);
 
   return (
@@ -108,16 +120,26 @@ export function DiagramsSection() {
         ) : null
       }
     >
+      {teamMode ? (
+        <div className="mb-4">
+          <DiagramFilter value={filter} onChange={setFilter} counts={counts} />
+        </div>
+      ) : null}
       {state.status === "loading" ? <Skeletons /> : null}
       {state.status === "error" ? <ErrorState message={state.message} onRetry={retry} /> : null}
-      {state.status === "ready" && diagrams.length === 0 ? <EmptyState /> : null}
+      {state.status === "ready" && everything.length === 0 ? <EmptyState /> : null}
+      {state.status === "ready" && everything.length > 0 && diagrams.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-line-strong px-6 py-8 text-center text-[13px] text-ink-3">
+          {filter === "shared" ? "Nobody has shared a diagram with you yet." : "You do not own any diagrams yet."}
+        </p>
+      ) : null}
 
       {visible.length > 0 ? (
         <ul className={GRID}>
           {visible.map((diagram, index) => (
             <li key={diagram.id} className={expanded ? undefined : "max-[519px]:nth-[n+5]:hidden"}>
               <Reveal delay={index < INITIAL_COUNT ? index * 40 : 0} className="h-full">
-                <DiagramCard diagram={diagram} now={now} onDelete={() => askDelete(diagram)} />
+                <DiagramCard diagram={diagram} now={now} access={access[diagram.id]} onDelete={() => askDelete(diagram)} />
               </Reveal>
             </li>
           ))}

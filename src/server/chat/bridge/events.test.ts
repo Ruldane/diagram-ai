@@ -6,10 +6,9 @@ import { describe, expect, it } from "vitest";
 import type { ChatStreamEvent } from "@/core/protocol";
 
 import { createClaudeMapper, shortToolName } from "./claude-events";
-import { createCodexMapper } from "./codex-events";
 import type { BridgeMapper, ProcessEnd } from "./sink";
 
-/** Real transcripts captured from Claude Code 2.1.296 and codex-cli 0.155.1 (see `fixtures/`), trimmed of personal paths. */
+/** Real transcripts captured from Claude Code 2.1.296 (see `fixtures/`), trimmed of personal paths. */
 const fixture = (name: string): string[] =>
   readFileSync(path.join(import.meta.dirname, "fixtures", name), "utf8").split("\n").filter(Boolean);
 
@@ -50,6 +49,39 @@ describe("Claude Code stream-json", () => {
     expect(events.at(-2)).toMatchObject({ type: "usage" });
     expect(events.at(-1)).toEqual({ type: "done" });
     expect(types(events).filter((type) => type === "done")).toHaveLength(1);
+  });
+
+  it("maps a transcript captured from the real CLI: first message of a new session", () => {
+    const { events } = run(createClaudeMapper, fixture("claude-real-first-turn.jsonl"));
+    expect(events[0]).toEqual({ type: "session", id: "6c7ac486-9b30-46a8-9375-e2e348fc34c0" });
+    expect(events[1]).toMatchObject({ type: "diagnostic", ok: true, message: expect.stringContaining("claude-haiku-5-5") });
+    // The name is announced as soon as the block starts; the summary comes from the tool result.
+    expect(tools(events)).toEqual(["diagram_add_elements:running", "diagram_add_elements:done:Added 1 node"]);
+    expect(text(events)).toBe("done");
+    expect(events.find((event) => event.type === "usage")).toMatchObject({ inputTokens: 4 + 19719 + 19504, outputTokens: 130, cachedTokens: 19504 });
+    expect(events.at(-1)).toEqual({ type: "done" });
+    expect(types(events).filter((type) => type === "done")).toHaveLength(1);
+  });
+
+  it("maps a transcript captured from the real CLI: the resumed second message", () => {
+    const { events } = run(createClaudeMapper, fixture("claude-real-resume.jsonl"));
+    // `--resume` keeps the session id, so the browser keeps resuming the same conversation.
+    expect(events[0]).toEqual({ type: "session", id: "6c7ac486-9b30-46a8-9375-e2e348fc34c0" });
+    expect(tools(events)).toEqual(["diagram_add_elements:running", "diagram_add_elements:done:Added 1 node and 1 connector"]);
+    expect(text(events)).toBe('Added a "World" node and connected it from "Hello" with an arrow.');
+    expect(events.find((event) => event.type === "error")).toBeUndefined();
+  });
+
+  it("maps a real run in which file reads outside the allowed folder were refused", () => {
+    const { events } = run(createClaudeMapper, fixture("claude-real-permission-denied.jsonl"));
+    const calls = events.filter((event) => event.type === "tool" && event.status !== "running");
+    expect(calls).toHaveLength(3);
+    for (const call of calls) expect(call).toMatchObject({ status: "error", summary: expect.stringMatching(/^Not allowed to use (Read|Grep) here$/) });
+    expect(events).toContainEqual({ type: "diagnostic", ok: false, message: expect.stringContaining("Read, Grep") });
+    // A refusal is not a failed run: the model still answered.
+    expect(events.some((event) => event.type === "error")).toBe(false);
+    expect(text(events)).toContain("denied");
+    expect(events.at(-1)).toEqual({ type: "done" });
   });
 
   it("counts cached prompt tokens in the usage it reports", () => {
@@ -118,37 +150,5 @@ describe("Claude Code stream-json", () => {
     const running = events.filter((event) => event.type === "tool" && event.status === "running");
     const closed = events.filter((event) => event.type === "tool" && event.status !== "running");
     expect(closed.length).toBe(running.length);
-  });
-});
-
-describe("Codex exec --json", () => {
-  it("maps a real run that called an MCP tool and answered", () => {
-    const { events } = run(createCodexMapper, fixture("codex-success.jsonl"));
-    expect(events[0]).toEqual({ type: "session", id: "01a12c48-38f9-7741-9302-ef808b5da79b" });
-    expect(tools(events)).toEqual(["diagram_list:running", "diagram_list:done:Listed the diagrams"]);
-    expect(text(events)).toBe("I’ll call diagram_list once.\n\ndone");
-    expect(events.find((event) => event.type === "usage")).toMatchObject({ inputTokens: 61729, outputTokens: 82, cachedTokens: 52224 });
-    expect(events.at(-1)).toEqual({ type: "done" });
-  });
-
-  it("maps failures and failed tool calls", () => {
-    const failedTurn = run(createCodexMapper, [
-      '{"type":"thread.started","thread_id":"t"}',
-      '{"type":"error","message":"stream disconnected"}',
-      '{"type":"turn.failed","error":{"message":"You are not logged in. Please sign in."}}',
-    ]).events;
-    expect(failedTurn.find((event) => event.type === "error")).toMatchObject({ message: expect.stringContaining("not signed in") });
-
-    const toolFailure = run(createCodexMapper, [
-      '{"type":"item.started","item":{"id":"i1","type":"mcp_tool_call","server":"diagram-ai","tool":"diagram_read","arguments":{},"result":null,"error":null,"status":"in_progress"}}',
-      '{"type":"item.completed","item":{"id":"i1","type":"mcp_tool_call","server":"diagram-ai","tool":"diagram_read","arguments":{},"result":null,"error":{"message":"No diagram with id x"},"status":"failed"}}',
-      '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}',
-    ]).events;
-    expect(tools(toolFailure)).toEqual(["diagram_read:running", "diagram_read:error:No diagram with id x"]);
-  });
-
-  it("reports an exit without a turn result", () => {
-    const { events } = run(createCodexMapper, ['{"type":"thread.started","thread_id":"t"}'], { exitCode: 2, stderrTail: "boom", aborted: false, timedOut: false });
-    expect(events.find((event) => event.type === "error")).toMatchObject({ message: expect.stringContaining("exit code 2") });
   });
 });

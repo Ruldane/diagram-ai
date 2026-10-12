@@ -55,7 +55,12 @@ const encoder = new TextEncoder();
  * Server-sent events response. `start` receives a `send` function and returns
  * a cleanup callback that runs when the client disconnects.
  */
-export function eventStream(request: Request, start: (send: (event: unknown) => void) => () => void): Response {
+export function eventStream(
+  request: Request,
+  start: (send: (event: unknown) => void) => () => void,
+  /** Asked on every heartbeat; when it says no the stream is told the diagram is gone and closed (access was revoked). */
+  stillAllowed?: () => Promise<boolean>,
+): Response {
   let cleanup: (() => void) | undefined;
   let heartbeat: NodeJS.Timeout | undefined;
   let closed = false;
@@ -83,7 +88,17 @@ export function eventStream(request: Request, start: (send: (event: unknown) => 
       };
       cleanup = start((event) => write(`data: ${JSON.stringify(event)}\n\n`));
       // Comment frames keep proxies and the browser from timing the stream out.
-      heartbeat = setInterval(() => write(": ping\n\n"), 20_000);
+      heartbeat = setInterval(() => {
+        write(": ping\n\n");
+        if (!stillAllowed) return;
+        void stillAllowed()
+          .then((allowed) => {
+            if (allowed || closed) return;
+            write(`data: ${JSON.stringify({ type: "deleted" })}\n\n`);
+            close();
+          })
+          .catch(() => undefined);
+      }, 20_000);
       request.signal.addEventListener("abort", close);
     },
     cancel() {

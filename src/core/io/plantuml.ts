@@ -50,6 +50,8 @@ interface Line {
   /** 1-based line number in the source. */
   no: number;
   text: string;
+  /** From a `' @id name` comment on the line before: the id the element this line creates should get. */
+  id?: string;
 }
 
 /** Collects what is skipped, so it can be reported once. */
@@ -103,18 +105,38 @@ class Findings {
 /** Readable, path-safe element ids that stay the same as long as the source name does. */
 class IdMint {
   private readonly taken = new Set<string>();
+  private readonly reserved = new Set<string>();
 
-  next(raw: string, fallback: string): string {
-    const cleaned = raw
+  private static clean(raw: string): string {
+    return raw
       .normalize("NFKD")
       .replace(/[̀-ͯ]/g, "")
       .replace(/[^A-Za-z0-9_.:-]+/g, "-")
       .replace(/^[^A-Za-z0-9]+/, "")
       .replace(/-+$/, "")
       .slice(0, 40);
-    const base = cleaned || fallback;
+  }
+
+  /** Keeps `raw` free for the element that asks for it by name (`claim`), so generated ids go around it. */
+  reserve(raw: string): void {
+    const id = IdMint.clean(raw);
+    if (id) this.reserved.add(id);
+  }
+
+  /** The id an element asked for in a `' @id` comment, unless another element already holds it. */
+  claim(raw: string, fallback: string): string {
+    const id = IdMint.clean(raw);
+    if (id && !this.taken.has(id)) {
+      this.taken.add(id);
+      return id;
+    }
+    return this.next(raw, fallback);
+  }
+
+  next(raw: string, fallback: string): string {
+    const base = IdMint.clean(raw) || fallback;
     let candidate = base;
-    for (let i = 2; this.taken.has(candidate); i++) candidate = `${base}-${i}`;
+    for (let i = 2; this.taken.has(candidate) || this.reserved.has(candidate); i++) candidate = `${base}-${i}`;
     this.taken.add(candidate);
     return candidate;
   }
@@ -219,6 +241,7 @@ function prepare(source: string, findings: Findings): Prepared {
   let type = "uml";
   let direction: LayoutDirection | undefined;
   let inside = !hasMarker;
+  let pendingId: string | undefined;
   let started = false;
   let extraDiagrams = 0;
   /** While inside a block that is dropped as a whole: the line that ends it. */
@@ -244,7 +267,12 @@ function prepare(source: string, findings: Findings): Prepared {
       inside = false;
       continue;
     }
-    if (!inside || !trimmed || trimmed.startsWith("'")) continue;
+    if (inside && trimmed.startsWith("'")) {
+      const named = /^'\s*@id\s+(\S+)\s*$/.exec(trimmed);
+      if (named) pendingId = named[1];
+      continue;
+    }
+    if (!inside || !trimmed) continue;
 
     if (blockEnd) {
       if (blockEnd.test(trimmed)) blockEnd = null;
@@ -290,7 +318,8 @@ function prepare(source: string, findings: Findings): Prepared {
       direction = "down";
       continue;
     }
-    lines.push({ no, text: trimmed });
+    lines.push({ no, text: trimmed, ...(pendingId ? { id: pendingId } : {}) });
+    pendingId = undefined;
   }
   return { lines, type, extraDiagrams, direction, noteNames };
 }
@@ -979,12 +1008,17 @@ class ActivityParser {
   private readonly frames: ActivityFrame[] = [];
   /** Where the flow continues: the nodes whose next step is the next node created. */
   private tails: Tail[] = [];
+  /** The `' @id` name of the line being read, until the node it creates takes it. */
+  private forced: string | undefined;
 
   constructor(private readonly findings: Findings) {}
 
   parse(lines: Line[]): ElementsSpec {
+    // Named elements keep their ids; everything else is numbered around them.
+    for (const line of lines) if (line.id) this.ids.reserve(line.id);
     let action: { no: number; parts: string[]; color?: string } | undefined;
     for (const line of lines) {
+      if (!action) this.forced = line.id;
       try {
         if (action) {
           action.parts.push(line.text);
@@ -1009,7 +1043,9 @@ class ActivityParser {
   }
 
   private add(shape: string, text: string | undefined, idHint: string, extra: Partial<NodeSpec> = {}): string {
-    const id = this.ids.next(idHint, shape.split("/").pop() ?? "node");
+    const fallback = shape.split("/").pop() ?? "node";
+    const id = this.forced ? this.ids.claim(this.forced, fallback) : this.ids.next(idHint, fallback);
+    this.forced = undefined;
     this.nodes.push({ id, shape, ...(text ? { text } : {}), ...extra });
     for (const tail of this.tails) {
       if (tail.from === id) continue;

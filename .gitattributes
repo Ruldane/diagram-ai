@@ -1,0 +1,12 @@
+# Checkouts use LF on every OS: tests compare generated files byte for byte,
+# and Windows' default autocrlf would otherwise turn them into CRLF.
+* text=auto eol=lf
+*.ttf binary
+*.woff binary
+*.woff2 binary
+*.png binary
+*.jpg binary
+*.ico binary
+*.pdf binary
+*.pptx binary
+*.zip binary

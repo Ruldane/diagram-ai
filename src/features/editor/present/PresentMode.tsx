@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Contrast, Maximize, Minimize, StickyNote, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, CircleDot, Contrast, Crosshair, Maximize, Minimize, StickyNote, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import { luminance } from "@/core/model/palette";
@@ -10,7 +10,7 @@ import { cn } from "@/lib/cn";
 
 import { useDoc, useEditor, useEditorStore } from "../store/context";
 import type { Viewport } from "../store/editor-store";
-import { animateViewport, goToSlide, isFullscreen, stopPresentation, toggleFullscreen, watchPresentation } from "./session";
+import { animateViewport, goToSlide, isFullscreen, startFromUrl, stopPresentation, toggleFullscreen, watchPresentation } from "./session";
 import { clampSlide, fitSlide, indexOfSlide, slidesOf, type Slide } from "./slides";
 
 /** How long the controls stay after the pointer stops moving. */
@@ -32,6 +32,12 @@ export function PresentMode() {
   // Entering and leaving (fullscreen, viewport restore) are driven by the store, so they also run
   // when something other than the keyboard starts or ends the show; the cleanup ends it on unmount.
   useEffect(() => watchPresentation(store), [store]);
+  // `?present=1` opens the diagram as a slide show as soon as it has loaded. The parameter stays in
+  // the address until the show is ended on purpose, so a re-mounted effect starts it again.
+  const loaded = useEditor((state) => state.status === "ready" && state.doc !== null);
+  useEffect(() => {
+    if (loaded) startFromUrl(store);
+  }, [loaded, store]);
   const active = useEditor((state) => state.presenting !== null);
   return active ? <Presenter /> : null;
 }
@@ -93,7 +99,11 @@ function Presenter() {
   const [visible, setVisible] = useState(true);
   const [notes, setNotes] = useState(false);
   const [dim, setDim] = useState(true);
-  const [laser, setLaser] = useState(false);
+  /** Laser: shown while L is held, or stays on after the toolbar button. Highlight is a ring that follows the cursor. */
+  const [laserHeld, setLaserHeld] = useState(false);
+  const [laserPinned, setLaserPinned] = useState(false);
+  const [highlight, setHighlight] = useState(false);
+  const laser = laserHeld || laserPinned;
   const [fullscreen, setFullscreenState] = useState(isFullscreen);
 
   /* Which frame is on screen is remembered by id, so slides added or reordered by an agent do not change it. */
@@ -200,14 +210,17 @@ function Presenter() {
           return handled(() => toggleFullscreen(store));
         case "l":
         case "L":
-          return handled(() => setLaser(true));
+          return handled(() => setLaserHeld(true));
+        case "h":
+        case "H":
+          return handled(() => setHighlight((value) => !value));
       }
     };
     const onKeyUp = (event: KeyboardEvent) => {
       event.stopPropagation();
-      if (event.key === "l" || event.key === "L") setLaser(false);
+      if (event.key === "l" || event.key === "L") setLaserHeld(false);
     };
-    const onBlur = () => setLaser(false);
+    const onBlur = () => setLaserHeld(false);
 
     window.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("keyup", onKeyUp, true);
@@ -220,17 +233,23 @@ function Presenter() {
   }, [store]);
 
   /* Pointer: thirds of the window go back and forward, a swipe does the same. */
-  const dot = useRef<HTMLDivElement>(null);
+  const dot = useRef<HTMLDivElement | null>(null);
   const down = useRef<{ x: number; y: number } | null>(null);
+  /** Where the pointer last was, so a laser or ring switched on later starts under it. */
+  const pointer = useRef({ x: -200, y: -200 });
+  const place = (x: number, y: number) => {
+    pointer.current = { x, y };
+    if (dot.current) dot.current.style.transform = `translate(${x}px, ${y}px)`;
+  };
 
   const onPointerMove = (event: ReactPointerEvent) => {
     wake();
-    if (dot.current) dot.current.style.transform = `translate(${event.clientX}px, ${event.clientY}px)`;
+    place(event.clientX, event.clientY);
   };
   const onPointerDown = (event: ReactPointerEvent) => {
     if (event.button !== 0) return;
     down.current = { x: event.clientX, y: event.clientY };
-    if (dot.current) dot.current.style.transform = `translate(${event.clientX}px, ${event.clientY}px)`;
+    place(event.clientX, event.clientY);
   };
   const onPointerUp = (event: ReactPointerEvent) => {
     const start = down.current;
@@ -246,7 +265,7 @@ function Presenter() {
     else wake();
   };
 
-  const hidden = !visible && !laser;
+  const hidden = !visible && !laser && !highlight;
   const bottom = notes ? NOTES_HEIGHT : 0;
 
   return (
@@ -266,9 +285,29 @@ function Presenter() {
         onContextMenu={(event) => event.preventDefault()}
       />
 
-      {laser ? (
-        <div ref={dot} aria-hidden className="pointer-events-none absolute top-0 left-0 z-[60]">
-          <span className="absolute -top-2 -left-2 size-4 rounded-full bg-[#ff2d2d] shadow-[0_0_0_6px_rgba(255,45,45,0.28),0_0_18px_6px_rgba(255,45,45,0.55)]" />
+      {laser || highlight ? (
+        <div
+          ref={(element) => {
+            dot.current = element;
+            // Starts under the pointer when switched on without it moving.
+            if (element) element.style.transform = `translate(${pointer.current.x}px, ${pointer.current.y}px)`;
+          }}
+          aria-hidden
+          className="pointer-events-none absolute top-0 left-0 z-[60]"
+        >
+          {highlight ? (
+            <span className="absolute -top-10 -left-10 size-20 rounded-full border-[3px] border-[#ffb000] bg-[#ffb000]/15 shadow-[0_0_0_1px_rgba(255,255,255,0.55),0_0_24px_4px_rgba(255,176,0,0.4)]" />
+          ) : null}
+          {laser ? (
+            <span className="absolute -top-2 -left-2 size-4 rounded-full bg-[#ff2d2d] shadow-[0_0_0_6px_rgba(255,45,45,0.28),0_0_18px_6px_rgba(255,45,45,0.55)]" />
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* A thin line that stays when the controls have faded: how far through the show you are. */}
+      {slides.length > 1 ? (
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 z-[55] h-[3px] bg-ink/10">
+          <div className="h-full bg-accent motion-safe:transition-[width] motion-safe:duration-300" style={{ width: `${((index + 1) / slides.length) * 100}%` }} />
         </div>
       ) : null}
 
@@ -279,7 +318,7 @@ function Presenter() {
         aria-hidden={hidden}
         onMouseDown={(event) => event.preventDefault()}
         onPointerMove={wake}
-        className={cn("pointer-events-none absolute inset-0 z-50 transition-opacity duration-200", hidden ? "opacity-0" : "opacity-100")}
+        className={cn("pointer-events-none absolute inset-0 z-50 transition-opacity duration-200 motion-reduce:transition-none", hidden ? "opacity-0" : "opacity-100")}
       >
         <p className="sr-only" aria-live="polite">
           {slide ? `Slide ${index + 1} of ${slides.length}: ${slide.title}` : "Nothing to present"}
@@ -292,6 +331,24 @@ function Presenter() {
         ) : null}
 
         <div className={cn("pointer-events-auto absolute top-4 right-4 flex items-center gap-1 rounded-xl bg-ink/85 p-1 text-bg shadow-[var(--shadow-lg)] backdrop-blur", hidden && "pointer-events-none")}>
+          <OverlayButton
+            label={laserPinned ? "Laser pointer on (hold L to show it)" : "Laser pointer (hold L)"}
+            shortcut="L"
+            active={laserPinned}
+            side="bottom"
+            onClick={() => setLaserPinned((value) => !value)}
+          >
+            <Crosshair className="size-4" />
+          </OverlayButton>
+          <OverlayButton
+            label={highlight ? "Hide highlight ring" : "Highlight ring"}
+            shortcut="H"
+            active={highlight}
+            side="bottom"
+            onClick={() => setHighlight((value) => !value)}
+          >
+            <CircleDot className="size-4" />
+          </OverlayButton>
           <OverlayButton
             label={notes ? "Hide notes" : "Show notes"}
             shortcut="N"

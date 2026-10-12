@@ -10,10 +10,10 @@ A live diagramming canvas for people **and** AI agents. Draw any technical diagr
 
 ```bash
 npm install
-npm run dev          # http://localhost:3000
+npm run dev          # http://localhost:3000 (this computer only; `npm run dev:lan` for other devices)
 ```
 
-Requires Node.js 20.9 or newer. Diagrams are stored as plain JSON files in `./data` (set `DIAGRAM_DATA_DIR` to move them).
+Requires Node.js 20.9 or newer. Diagrams are stored as plain JSON files in `./data` (set `DIAGRAM_DATA_DIR` to move them). Installing on another machine, the Docker database and connecting agents: [`docs/setup.md`](docs/setup.md).
 
 ## Connect an agent
 
@@ -52,6 +52,7 @@ Then ask, for example: *"Draw the architecture of this repo as a C4 container di
 | `diagram_list_comments`, `diagram_add_comment`, `diagram_resolve_comment` | Review threads |
 | `diagram_export`, `diagram_import` | SVG / PNG / PDF / PPTX / draw.io / Mermaid / JSON out; Mermaid / draw.io / JSON in |
 | `diagram_checkpoint` | Save, list and restore named checkpoints |
+| `diagram_review_status` | See which of the agent's changes the user has not accepted yet, and which they reverted |
 
 ### MCP prompts, resources and the skill
 
@@ -62,6 +63,17 @@ Resources are read-only markdown: `diagram://guide` (how to draw well), `diagram
 A Claude Code skill lives in `.claude/skills/diagram-ai`; copy it to `~/.claude/skills/` to use it in any project. Installation, the prompt arguments and an `AGENTS.md` snippet for Codex are in [`docs/agent-skill.md`](docs/agent-skill.md).
 
 `node scripts/mcp-smoke.mjs http://localhost:3000` exercises the tools, prompts and resources against a running app.
+
+## Teams: accounts, sharing and live cursors
+
+Accounts are opt-in. Working alone never needs one, with files or with PostgreSQL: no login, MCP without a token, everything on your machine is yours. Where you store diagrams (`DATABASE_URL`, `npm run db:up`, see [`docs/database.md`](docs/database.md)) and whether accounts exist are separate switches. To turn them on set `DIAGRAM_AI_AUTH=on` together with `DATABASE_URL`.
+
+- **Accounts.** Email and password (scrypt), server-side sessions, `/login` and `/signup`. The first account is the administrator and takes over diagrams that had no owner; later sign-ups need a share link (`DIAGRAM_AI_SIGNUP=open|invite|closed`).
+- **Sharing.** Each diagram has an owner, members (editor or viewer, added by email) and revocable share links (`/s/<token>`, view-only without an account, editing once signed in). Viewers get a genuinely read-only editor; the home page filters "Mine" and "Shared with me".
+- **Agents.** With accounts on, `/api/mcp` needs `Authorization: Bearer dai_…`, a personal access token from Account settings. An agent sees and edits only what its account can; its work is credited to it on that account's behalf.
+- **Presence.** Everyone on a diagram, in several tabs or several accounts, shows as avatars in the top bar with live cursors and selection outlines on the canvas. This works in solo mode too.
+
+Details, the security checklist and operating notes: [`docs/auth.md`](docs/auth.md). `.env.example` lists the variables.
 
 ## Exports
 
@@ -122,7 +134,7 @@ Key ideas:
 
 | Command | What it does |
 | --- | --- |
-| `npm run dev` / `build` / `start` | Next.js |
+| `npm run dev` / `build` / `start` | Next.js. `dev` listens on 127.0.0.1 only; `npm run dev:lan` listens on every interface (other devices, accounts) |
 | `npm test` | Unit tests (Vitest) |
 | `npm run typecheck`, `npm run lint` | TypeScript, ESLint |
 | `npm run gallery -- [library…]` | Render shape contact sheets to `.gallery/` |
@@ -131,7 +143,7 @@ Key ideas:
 ## Limits worth knowing
 
 - **Single process.** Live sync uses in-memory pub/sub and server-sent events, which suits `next dev` / `next start` on one machine. Running several instances or on serverless needs a shared pub/sub and database behind the existing `Hub` and `DiagramRepository` interfaces.
-- **No accounts.** The app trusts whoever can reach it and only blocks cross-origin browser requests. Do not expose it to the internet as is.
+- **Accounts are opt-in.** In solo mode (the default) the app trusts whoever can reach it and only blocks cross-origin browser requests; do not expose it to the internet. `DIAGRAM_AI_AUTH=on` with `DATABASE_URL` adds accounts and sharing ([`docs/auth.md`](docs/auth.md)); put that behind HTTPS (and set `DIAGRAM_AI_TRUST_PROXY=1` if a proxy terminates TLS).
 - **Concurrent editing** is last-writer-wins per element — fine for one person plus agents, not a CRDT.
 - **Connectors** are routed by the layout engine, or live around every unrelated shape (see [`docs/routing.md`](docs/routing.md)); in very dense windows the router falls back to simpler shapes and may cross a node, and there are no line "jumps" over crossings.
 - **Sequence diagrams** are generated with lifelines and messages; activation bars and fragments exist as shapes but are placed by hand.

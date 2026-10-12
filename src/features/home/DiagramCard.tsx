@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { IconButton } from "@/components/ui/button";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
 import { getDiagramType, hasDiagramType } from "@/core/catalog";
+import { ROLE_LABEL, type DiagramAccess } from "@/core/auth";
 import type { DiagramSummary } from "@/core/model/types";
 import { timeAgo } from "@/lib/agents";
 import { cn } from "@/lib/cn";
@@ -52,11 +53,13 @@ export interface DiagramCardProps {
   diagram: DiagramSummary;
   /** Current time, for the relative "updated" label. */
   now: number;
+  /** Accounts on: how the signed-in person relates to the diagram. */
+  access?: DiagramAccess;
   onDelete: () => void;
 }
 
 /** A saved diagram. The whole card opens it; the "⋯" menu sits above the link. */
-export function DiagramCard({ diagram, now, onDelete }: DiagramCardProps) {
+export function DiagramCard({ diagram, now, access, onDelete }: DiagramCardProps) {
   const router = useRouter();
   const [duplicating, setDuplicating] = useState(false);
   const href = diagramHref(diagram.id);
@@ -112,10 +115,14 @@ export function DiagramCard({ diagram, now, onDelete }: DiagramCardProps) {
               <MenuItem icon={<Copy />} disabled={duplicating} onSelect={() => void duplicate()}>
                 Duplicate
               </MenuItem>
-              <MenuSeparator />
-              <MenuItem icon={<Trash2 />} danger onSelect={onDelete}>
-                Delete…
-              </MenuItem>
+              {!access || access.role === "owner" ? (
+                <>
+                  <MenuSeparator />
+                  <MenuItem icon={<Trash2 />} danger onSelect={onDelete}>
+                    Delete…
+                  </MenuItem>
+                </>
+              ) : null}
             </Menu>
           </div>
         </div>
@@ -128,6 +135,11 @@ export function DiagramCard({ diagram, now, onDelete }: DiagramCardProps) {
         <p className="mt-1.5 flex min-h-5 items-center justify-between gap-3 font-mono text-[11px] text-ink-3">
           <span className="truncate">
             {plural(diagram.nodeCount, "node")} · {plural(diagram.edgeCount, "edge")}
+            {access && access.role !== "owner"
+              ? ` · ${ROLE_LABEL[access.role].toLowerCase()}${access.ownerName ? ` · ${access.ownerName}` : ""}`
+              : access?.shared
+                ? " · shared"
+                : ""}
           </span>
           {diagram.openComments > 0 ? (
             <span className="flex h-5 shrink-0 items-center gap-1 rounded-md bg-accent-soft px-1.5 text-accent">

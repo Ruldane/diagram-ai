@@ -27,7 +27,11 @@ import { actorColor } from "@/lib/agents";
 import { cn } from "@/lib/cn";
 import { useTheme } from "@/lib/theme";
 
+import { AccountMenu } from "@/features/auth/AccountMenu";
+
 import { runCommand, shortcutOf } from "../commands/commands";
+import { PeerAvatars } from "../presence/PeerAvatars";
+import { ShareButton } from "../share/ShareButton";
 import { PresentButton } from "../present/PresentButton";
 import { ReviewPill } from "../review/ReviewPill";
 import { useEditor, useEditorStore } from "../store/context";
@@ -172,6 +176,7 @@ export function TopBar() {
   const undoActor = useEditor((state) => state.undoStack[state.undoStack.length - 1]?.actor);
   const offline = useEditor((state) => state.connection === "offline");
   const paletteOpen = useEditor((state) => state.paletteOpen);
+  const readOnly = useEditor((state) => state.readOnly);
   const panel = useEditor((state) => state.panel);
   const openComments = useEditor((state) => Object.values(state.doc!.comments).filter((c) => !c.resolved).length);
   const run = (id: string) => runCommand(store, id);
@@ -184,9 +189,11 @@ export function TopBar() {
             <Logo />
           </Link>
         </Tip>
-        <IconButton label={paletteOpen ? "Hide shape library" : "Show shape library"} shortcut={shortcutOf("view.palette")} active={false} onClick={() => run("view.palette")}>
-          <PanelLeft className="size-4" />
-        </IconButton>
+        {readOnly ? null : (
+          <IconButton label={paletteOpen ? "Hide shape library" : "Show shape library"} shortcut={shortcutOf("view.palette")} active={false} onClick={() => run("view.palette")}>
+            <PanelLeft className="size-4" />
+          </IconButton>
+        )}
         <span className="mx-1 h-5 w-px shrink-0 bg-line" aria-hidden />
         <DiagramName />
         <TypeMenu />
@@ -201,6 +208,7 @@ export function TopBar() {
       </div>
 
       <div className={cn(ISLAND, "shrink-0")}>
+        <PeerAvatars />
         <ReviewPill />
         <AgentPill />
         <span className="mx-1 h-5 w-px bg-line" aria-hidden />
@@ -240,10 +248,12 @@ export function TopBar() {
         <IconButton label={panel ? "Hide side panel" : "Show side panel"} shortcut={shortcutOf("view.inspector")} onClick={() => run("view.inspector")}>
           <PanelRight className="size-4" />
         </IconButton>
+        <ShareButton />
         <Button variant="primary" size="sm" className="ml-1 h-8 rounded-lg px-3" onClick={() => run("diagram.export")}>
           <Download className="size-3.5" />
           Export
         </Button>
+        <AccountMenu />
       </div>
     </div>
   );

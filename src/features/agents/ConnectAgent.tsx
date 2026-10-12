@@ -3,6 +3,7 @@
 import { Check, Copy } from "lucide-react";
 import { useState, useSyncExternalStore } from "react";
 
+import { useSession } from "@/features/auth/use-session";
 import { cn } from "@/lib/cn";
 
 type ClientId = "claude" | "codex" | "other";
@@ -12,6 +13,44 @@ interface Snippet {
   /** Short note shown above the code. */
   hint: string;
   code: string;
+}
+
+/** Accounts on: the token is sent as a bearer header; the examples read it from an environment variable so a committed file holds no secret. */
+function teamSnippets(origin: string): Record<ClientId, Snippet[]> {
+  const url = `${origin}/api/mcp`;
+  const header = "Authorization: Bearer $DIAGRAM_AI_TOKEN";
+  return {
+    claude: [
+      {
+        label: "Terminal",
+        hint: "Create a token in Account settings, put it in DIAGRAM_AI_TOKEN, then run once in any project.",
+        code: `claude mcp add --transport http diagram-ai ${url} --header "${header}"`,
+      },
+      {
+        label: ".mcp.json",
+        hint: "Or commit this file: Claude Code fills ${DIAGRAM_AI_TOKEN} from each person's own environment.",
+        code: JSON.stringify({ mcpServers: { "diagram-ai": { type: "http", url, headers: { Authorization: "Bearer ${DIAGRAM_AI_TOKEN}" } } } }, null, 2),
+      },
+    ],
+    codex: [
+      { label: "Terminal", hint: "Run once, then start a new Codex session.", code: `codex mcp add diagram-ai --url ${url}/codex --bearer-token-env-var DIAGRAM_AI_TOKEN` },
+      { label: "config.toml", hint: "Or add this to ~/.codex/config.toml.", code: `[mcp_servers.diagram-ai]
+url = "${url}/codex"
+bearer_token_env_var = "DIAGRAM_AI_TOKEN"` },
+    ],
+    other: [
+      {
+        label: "HTTP",
+        hint: "Any MCP client that supports Streamable HTTP and custom headers. Append /<name> to label the agent on the canvas.",
+        code: JSON.stringify({ mcpServers: { "diagram-ai": { url, headers: { Authorization: "Bearer <your token>" } } } }, null, 2),
+      },
+      {
+        label: "stdio",
+        hint: "For clients that only launch local commands, bridge through mcp-remote.",
+        code: JSON.stringify({ mcpServers: { "diagram-ai": { command: "npx", args: ["-y", "mcp-remote", url, "--header", "Authorization: Bearer ${DIAGRAM_AI_TOKEN}"] } } }, null, 2),
+      },
+    ],
+  };
 }
 
 function snippets(origin: string): Record<ClientId, Snippet[]> {
@@ -80,6 +119,8 @@ export function ConnectAgent({ className }: { className?: string }) {
   const [client, setClient] = useState<ClientId>("claude");
   // The server URL is this page's origin; resolved on the client to stay prerenderable.
   const origin = useSyncExternalStore(subscribeNoop, () => window.location.origin, () => "http://localhost:3000");
+  const { authRequired } = useSession();
+  const shown = authRequired ? teamSnippets(origin) : snippets(origin);
 
   return (
     <div className={cn("flex flex-col gap-3", className)}>
@@ -102,7 +143,17 @@ export function ConnectAgent({ className }: { className?: string }) {
         ))}
       </div>
 
-      {snippets(origin)[client].map((snippet) => (
+      {authRequired ? (
+        <p className="rounded-xl border border-line bg-sunken px-3 py-2 text-[12px] leading-relaxed text-ink-2">
+          This server has accounts, so an agent signs in with a personal access token and sees only the diagrams you can.{" "}
+          <a href="/account#tokens" className="font-semibold text-accent hover:underline">
+            Create a token
+          </a>
+          .
+        </p>
+      ) : null}
+
+      {shown[client].map((snippet) => (
         <div key={snippet.label}>
           <p className="mb-1.5 text-[12px] text-ink-3">
             <span className="mr-1.5 font-mono text-[11px] font-semibold text-ink-2">{snippet.label}</span>

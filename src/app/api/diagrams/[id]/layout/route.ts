@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { layoutSchema } from "@/core/model/schema";
-import { getService } from "@/server/context";
+import { requestContext } from "@/server/auth/request";
 import { assertSameOrigin, json, route } from "@/server/http";
 
 const bodySchema = z.object({ options: layoutSchema.optional(), ids: z.array(z.string().max(64)).max(5000).optional() });
@@ -14,5 +14,6 @@ export const POST = route(async (request: Request, { params }: { params: Promise
   assertSameOrigin(request);
   const { id } = await params;
   const { options, ids } = bodySchema.parse(await request.json());
-  return json({ patch: await getService().previewLayout(id, options, ids) });
+  const { service } = await requestContext(request);
+  return json({ patch: await service.previewLayout(id, options, ids) });
 });

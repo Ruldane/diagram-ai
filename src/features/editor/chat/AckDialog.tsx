@@ -3,13 +3,14 @@
 import { BRIDGE_TERMS } from "@/core/chat-terms";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
+import type { LocalChatEngineId } from "@/core/protocol";
 
 /**
  * The first use of a local CLI engine asks for an explicit yes. The wording
  * lives in `core/chat-terms.ts`, which the server also reads to require the
  * matching acknowledgement.
  */
-export function AckDialog({ engine, onAccept, onCancel }: { engine: "claude-code" | "codex" | null; onAccept(): void; onCancel(): void }) {
+export function AckDialog({ engine, onAccept, onCancel }: { engine: LocalChatEngineId | null; onAccept(): void; onCancel(): void }) {
   const terms = engine ? BRIDGE_TERMS[engine] : null;
   return (
     <Dialog

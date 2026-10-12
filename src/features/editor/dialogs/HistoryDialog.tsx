@@ -45,6 +45,8 @@ function CheckpointRow({ snapshot, now, confirming, restoring, comparing, locked
   onRestore: () => void;
   onCompare: () => void;
 }) {
+  // A viewer may compare against a checkpoint but not replace the diagram with it.
+  const readOnly = useEditor((state) => state.readOnly);
   return (
     <li className="px-3 py-2.5">
       <div className="flex items-center gap-3">
@@ -69,7 +71,7 @@ function CheckpointRow({ snapshot, now, confirming, restoring, comparing, locked
               {comparing ? <LoaderCircle aria-hidden className="size-3.5 animate-spin" /> : <GitCompareArrows aria-hidden className="size-3.5" />}
               Compare
             </Button>
-            <Button size="sm" onClick={onAsk} disabled={locked} aria-label={`Restore ${snapshot.name}`}>
+            <Button size="sm" onClick={onAsk} disabled={locked || readOnly} aria-label={`Restore ${snapshot.name}`}>
               <RotateCcw aria-hidden className="size-3.5" />
               Restore
             </Button>
@@ -102,6 +104,7 @@ export function HistoryDialog({ onClose }: { onClose: () => void }) {
   const store = useEditorStore();
   const diagramId = useEditor((state) => state.diagramId);
   const clientId = useEditor((state) => state.clientId);
+  const readOnly = useEditor((state) => state.readOnly);
   const endpoint = `/api/diagrams/${encodeURIComponent(diagramId)}/snapshots`;
   const now = useClock();
 
@@ -197,7 +200,7 @@ export function HistoryDialog({ onClose }: { onClose: () => void }) {
           onChange={(event) => setName(event.target.value)}
           className="min-w-0 flex-1"
         />
-        <Button type="submit" variant="primary" disabled={saving || restoring} aria-busy={saving}>
+        <Button type="submit" variant="primary" disabled={saving || restoring || readOnly} aria-busy={saving}>
           {saving ? <LoaderCircle aria-hidden className="size-4 animate-spin" /> : <Save aria-hidden className="size-4" />}
           <span className="max-[420px]:sr-only">Save checkpoint</span>
         </Button>

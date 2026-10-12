@@ -2,7 +2,8 @@ import { statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-export type CliName = "claude" | "codex";
+/** The command-line programs the bridge can drive. Only Claude Code is bridged (see docs/assistant.md). */
+export type CliName = "claude";
 
 /** Everything resolution reads from the machine, injectable so every platform layout can be tested. */
 export interface Machine {
@@ -44,12 +45,11 @@ export function currentMachine(): Machine {
   };
 }
 
-const OVERRIDE_VAR: Record<CliName, string> = { claude: "DIAGRAM_AI_CLAUDE_PATH", codex: "DIAGRAM_AI_CODEX_PATH" };
+const OVERRIDE_VAR: Record<CliName, string> = { claude: "DIAGRAM_AI_CLAUDE_PATH" };
 
 /** Real executables an npm shim points at, relative to the directory holding the shim. */
 const PACKAGE_EXECUTABLES: Record<CliName, string[]> = {
   claude: ["node_modules/@anthropic-ai/claude-code/bin/claude.exe"],
-  codex: [],
 };
 
 function joinFor(platform: NodeJS.Platform) {
@@ -62,17 +62,11 @@ function knownLocations(name: CliName, machine: Machine): string[] {
   const out: string[] = [];
   if (machine.platform === "win32") {
     const appData = machine.env("APPDATA") ?? p.join(home, "AppData", "Roaming");
-    const localAppData = machine.env("LOCALAPPDATA") ?? p.join(home, "AppData", "Local");
-    if (name === "claude") {
-      out.push(p.join(home, ".local", "bin", "claude.exe"), p.join(home, ".claude", "local", "claude.exe"));
-    } else {
-      out.push(p.join(localAppData, "Programs", "OpenAI", "Codex", "bin", "codex.exe"), p.join(home, ".local", "bin", "codex.exe"));
-    }
-    out.push(p.join(appData, "npm", `${name}.cmd`));
+    out.push(p.join(home, ".local", "bin", `${name}.exe`), p.join(home, ".claude", "local", `${name}.exe`), p.join(appData, "npm", `${name}.cmd`));
   } else {
     out.push(
       p.join(home, ".local", "bin", name),
-      ...(name === "claude" ? [p.join(home, ".claude", "local", "claude")] : []),
+      p.join(home, ".claude", "local", name),
       p.join(home, ".npm-global", "bin", name),
       p.join(home, ".volta", "bin", name),
       `/usr/local/bin/${name}`,

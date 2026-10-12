@@ -70,6 +70,7 @@ const actor = z.object({
   kind: z.enum(["human", "agent", "system"]),
   id: z.string().max(80),
   name: z.string().max(80),
+  ownerId: z.string().max(80).optional(),
 });
 
 export const nodeSchema = z.object({

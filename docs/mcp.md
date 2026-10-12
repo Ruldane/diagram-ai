@@ -19,6 +19,15 @@ The endpoint is `POST /api/mcp` (Streamable HTTP, JSON responses, stateless). St
 
 **Origin guard.** Browser pages cannot call the endpoint cross-site (`assertSameOrigin`); CLI clients send no `Origin` and pass.
 
+**Accounts on (`DIAGRAM_AI_AUTH=on`).** Every request needs `Authorization: Bearer dai_<token>`, a personal access token from Account settings (shown once, stored hashed; `read` or `write`). Without one the endpoint answers 401 with `WWW-Authenticate: Bearer`. The tools then see and change only what that account can: `diagram_list` is filtered, reading or editing someone else's diagram answers "No diagram with id", and edits are credited to the agent on the account's behalf (`Claude Code (Ana)`). The server wraps the service and hub per request (`src/server/auth/guard.ts`), so a new tool needs no authorization code, only a `DiagramService` method with a rule. Add the header when connecting:
+
+```bash
+claude mcp add --transport http diagram-ai http://localhost:3000/api/mcp --header "Authorization: Bearer $DIAGRAM_AI_TOKEN"
+codex mcp add diagram-ai --url http://localhost:3000/api/mcp/codex --bearer-token-env-var DIAGRAM_AI_TOKEN
+```
+
+In `.mcp.json` use `"headers": { "Authorization": "Bearer ${DIAGRAM_AI_TOKEN}" }` so no secret is committed. Without accounts (the default, even on PostgreSQL) no token is needed. The connect dialog and the home page show the header forms only when accounts are on. See [auth.md](auth.md).
+
 ## Anatomy
 
 | File | Role |

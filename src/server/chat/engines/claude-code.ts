@@ -5,7 +5,7 @@ import path from "node:path";
 
 import type { ChatEngineStatus } from "@/core/protocol";
 
-import { buildClaudeArgs, claudeMcpConfig, MODEL_NAME } from "../bridge/args";
+import { buildClaudeArgs, claudeMcpConfig, folderReadRules, MODEL_NAME } from "../bridge/args";
 import { resolveBinary } from "../bridge/binary";
 import { bridgeDisabledReason } from "../bridge/gating";
 import { bridgeBrief, bridgePrompt } from "../bridge/brief";
@@ -60,20 +60,25 @@ export const claudeCodeEngine: Engine = {
     const model = configured && MODEL_NAME.test(configured) ? configured : undefined;
     const cwd = input.workdir ?? defaultBridgeWorkdir();
     const shim = binary.kind === "shim";
+    // File tools are only offered for a folder whose path can be written as a permission rule.
+    const folder = input.workdir && folderReadRules(input.workdir) ? input.workdir : undefined;
+    if (input.workdir && !folder) {
+      emit({ type: "diagnostic", ok: false, message: "The working folder's path has characters that cannot be used in a permission rule, so its files are not readable. Choose a folder whose path has only letters, digits, spaces and . _ - characters." });
+    }
 
     const runDir = await mkdtemp(path.join(os.tmpdir(), "diagram-ai-bridge-"));
     try {
       const mcpConfigFile = path.join(runDir, "mcp.json");
       await writeFile(mcpConfigFile, claudeMcpConfig(`${input.ctx.baseUrl}/api/mcp/claude-code`), "utf8");
 
-      const brief = bridgeBrief(doc, input.selection, { folderName: input.workdir ? path.basename(input.workdir) : undefined });
+      const brief = bridgeBrief(doc, input.selection, { folderName: folder ? path.basename(folder) : undefined });
       const prompt = bridgePrompt(input.history, resume);
       await runCli({
         input,
         actor: ACTOR,
         binary,
         // A shell shim cannot carry a long multi-line argument safely, so the brief travels with the prompt there.
-        args: buildClaudeArgs({ sessionId, resume, mcpConfigFile, fileTools: Boolean(input.workdir), model, brief: shim ? undefined : brief }),
+        args: buildClaudeArgs({ sessionId, resume, mcpConfigFile, folder, model, brief: shim ? undefined : brief }),
         cwd,
         env: buildChildEnv("claude"),
         stdin: shim ? `${brief}\n\n---\n\n${prompt}` : prompt,

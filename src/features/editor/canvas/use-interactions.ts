@@ -471,7 +471,7 @@ export function useInteractions(containerRef: RefObject<HTMLDivElement | null>) 
   function onDoubleClick(event: React.MouseEvent<HTMLDivElement>) {
     const state = store.getState();
     const doc = state.doc;
-    if (!doc || state.tool !== "select") return;
+    if (!doc || state.tool !== "select" || state.readOnly) return;
     // Hit-test by position: pointer capture retargets click events to the canvas container.
     const target = document.elementFromPoint(event.clientX, event.clientY) ?? (event.target as Element);
     if (target.closest("[data-canvas-ui], [data-handle], [data-port]")) return;

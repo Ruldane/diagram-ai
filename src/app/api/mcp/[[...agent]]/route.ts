@@ -1,7 +1,7 @@
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 
-import { getContext } from "@/server/context";
 import { assertSameOrigin, errorResponse } from "@/server/http";
+import { requestContext } from "@/server/auth/request";
 import { identifyAgent } from "@/server/mcp/identity";
 import { createMcpServer } from "@/server/mcp/server";
 
@@ -13,18 +13,25 @@ import { createMcpServer } from "@/server/mcp/server";
  *
  * Each request gets its own server + transport, which keeps callers isolated
  * and means there is no session to lose when the dev server restarts.
+ *
+ * Accounts on: every request must carry `Authorization: Bearer
+ * dai_…`, a personal access token. The tools then see, and may change, only
+ * what that account can (see `server/auth/guard.ts`); changes are credited to
+ * the agent "on behalf of" the account.
  */
 export async function POST(request: Request, { params }: { params: Promise<{ agent?: string[] }> }): Promise<Response> {
   try {
     assertSameOrigin(request);
     const { agent } = await params;
     const body: unknown = await request.json();
-    const { service, hub } = getContext();
+    const { service, hub, access } = await requestContext(request, { bearerOnly: true });
+    // The hub guard answers synchronously, so what the account can open is looked up once, here.
+    if (!access.local) await access.preload();
 
     const server = createMcpServer({
       service,
       hub,
-      actor: identifyAgent(request, agent?.[0], body),
+      actor: access.agentActor(identifyAgent(request, agent?.[0], body)),
       baseUrl: new URL(request.url).origin,
     });
     const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
@@ -33,7 +40,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ age
     void server.close().catch(() => undefined);
     return response;
   } catch (error) {
-    return errorResponse(error);
+    const response = errorResponse(error);
+    if (response.status === 401) response.headers.set("WWW-Authenticate", 'Bearer realm="diagram-ai"');
+    return response;
   }
 }
 

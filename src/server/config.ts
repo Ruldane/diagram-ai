@@ -26,3 +26,35 @@ export const databaseUrl = (): string | undefined => process.env.DATABASE_URL?.t
 export const autoMigrate = (): boolean => !["0", "false", "off", "no"].includes((process.env.DIAGRAM_AI_AUTO_MIGRATE ?? "").trim().toLowerCase());
 /** Change-log entries kept per diagram in PostgreSQL. */
 export const MAX_OPS_PER_DIAGRAM = 5_000;
+
+/* ------------------------------------------------------------ accounts */
+
+const ON = ["1", "true", "on", "yes"];
+
+/**
+ * Accounts and sharing are on: "team mode". It is opt-in and needs the
+ * database, so it takes both `DIAGRAM_AI_AUTH=on` and `DATABASE_URL`.
+ * Everything else is solo mode with no login, including PostgreSQL storage
+ * with `DIAGRAM_AI_AUTH` unset: where diagrams are stored and who may open
+ * them are independent choices.
+ */
+export const authEnabled = (): boolean => Boolean(databaseUrl()) && ON.includes((process.env.DIAGRAM_AI_AUTH ?? "").trim().toLowerCase());
+
+/** `DIAGRAM_AI_AUTH=on` without a database: accounts cannot work, which `server/context.ts` reports once at startup. */
+export const authRequestedWithoutDatabase = (): boolean => ON.includes((process.env.DIAGRAM_AI_AUTH ?? "").trim().toLowerCase()) && !databaseUrl();
+
+/** `DIAGRAM_AI_SIGNUP`. Unset means the first account may register and everyone after needs an invite link. */
+export function signupSetting(): "open" | "invite" | "closed" | undefined {
+  const value = (process.env.DIAGRAM_AI_SIGNUP ?? "").trim().toLowerCase();
+  return value === "open" || value === "invite" || value === "closed" ? value : undefined;
+}
+
+/** Trust `X-Forwarded-*` headers (the app runs behind a reverse proxy that sets them). */
+export const trustProxy = (): boolean => ["1", "true", "on", "yes"].includes((process.env.DIAGRAM_AI_TRUST_PROXY ?? "").trim().toLowerCase());
+
+/** Cookie sessions end this long after sign-in, whatever the activity. */
+export const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60_000;
+/** ...or this long after the last request. */
+export const SESSION_IDLE_MS = 7 * 24 * 60 * 60_000;
+/** The session token is replaced when it is older than this. */
+export const SESSION_ROTATE_MS = 24 * 60 * 60_000;

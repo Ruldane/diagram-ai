@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import type { ReviewResponse } from "@/core/review/protocol";
-import { getService } from "@/server/context";
+import { requestContext } from "@/server/auth/request";
 import { assertSameOrigin, json, route } from "@/server/http";
 
 type Context = { params: Promise<{ id: string }> };
@@ -12,9 +12,10 @@ const bodySchema = z.object({
 });
 
 /** Whether agent changes are waiting for review, with the baseline the browser diffs against. */
-export const GET = route(async (_request: Request, { params }: Context) => {
+export const GET = route(async (request: Request, { params }: Context) => {
   const { id } = await params;
-  const { review, base } = await getService().reviewState(id);
+  const { service } = await requestContext(request);
+  const { review, base } = await service.reviewState(id);
   return json({ review, base } satisfies ReviewResponse, { headers: { "Cache-Control": "no-store" } });
 });
 
@@ -23,6 +24,7 @@ export const POST = route(async (request: Request, { params }: Context) => {
   assertSameOrigin(request);
   const { id } = await params;
   const { ids } = bodySchema.parse(await request.json());
-  const { review, base } = await getService().acceptReview(id, ids ?? "all");
+  const { service } = await requestContext(request);
+  const { review, base } = await service.acceptReview(id, ids ?? "all");
   return json({ review, base } satisfies ReviewResponse);
 });

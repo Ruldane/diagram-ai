@@ -32,7 +32,11 @@ const reviewFileSchema = z.object({ doc: docSchema, by: actorSchema.optional(), 
 export interface ImportOptions {
   /** Data directory containing `diagrams/`, and optionally `snapshots/` and `review/`. */
   dir: string;
-  /** Recorded as `owner_id` of the diagrams that are written. */
+  /**
+   * Recorded as `owner_id` of the diagrams that are written. An email address is looked up among the accounts;
+   * when the value is an account id (or an email that resolves to one) the diagrams also become that account's
+   * own in the member list. Anything else is stored as given and claimed by the first account that registers.
+   */
   owner?: string;
   /** Replace diagrams that already exist instead of skipping them. */
   overwrite?: boolean;
@@ -62,6 +66,15 @@ async function listJson(dir: string): Promise<string[]> {
   }
 }
 
+/** Turns `--owner` into the value stored in `owner_id`, and says whether it names an existing account. */
+async function resolveOwner(pool: Pool, owner: string | undefined): Promise<{ id: string | undefined; account: boolean }> {
+  if (!owner) return { id: undefined, account: false };
+  const found = await pool.query<{ id: string }>("SELECT id FROM users WHERE id = $1 OR email = lower($1) LIMIT 1", [owner.trim()]);
+  if (found.rows[0]) return { id: found.rows[0].id, account: true };
+  if (owner.includes("@")) throw new Error(`No account uses ${owner}. Register it first, or pass an account id.`);
+  return { id: owner, account: false };
+}
+
 /**
  * Imports every diagram found under `dir`. Each diagram goes in its own
  * transaction together with its snapshots and review baseline, so a failure
@@ -71,6 +84,7 @@ export async function importFiles(pool: Pool, options: ImportOptions): Promise<I
   const diagramsDir = path.join(options.dir, "diagrams");
   const files = await listJson(diagramsDir);
   const summary: ImportSummary = { imported: 0, replaced: 0, skipped: 0, snapshots: 0, reviewBases: 0, problems: [] };
+  const owner = await resolveOwner(pool, options.owner);
 
   for (const fileName of files) {
     const id = fileName.slice(0, -".json".length);
@@ -124,8 +138,14 @@ export async function importFiles(pool: Pool, options: ImportOptions): Promise<I
     }
 
     const outcome = await inTransaction(pool, async (client) => {
-      const written = await writeDiagram(client, doc, { ownerId: options.owner, ifMissing: !options.overwrite });
+      const written = await writeDiagram(client, doc, { ownerId: owner.id, ifMissing: !options.overwrite });
       if (written === "skipped") return written;
+      if (owner.account) {
+        await client.query(
+          `INSERT INTO diagram_members (diagram_id, user_id, role) VALUES ($1, $2, 'owner') ON CONFLICT (diagram_id, user_id) DO UPDATE SET role = 'owner'`,
+          [id, owner.id],
+        );
+      }
       for (const snapshot of snapshots) await writeSnapshot(client, snapshot);
       if (snapshots.length) await trimSnapshots(client, id, MAX_SNAPSHOTS);
       if (review) await writeReviewBase(client, id, { doc: review.doc as DiagramDoc, ...(review.by ? { by: review.by } : {}), since: review.since });

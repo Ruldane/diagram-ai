@@ -13,6 +13,7 @@ import { useShortcuts } from "./commands/use-shortcuts";
 import { Dialogs } from "./dialogs/Dialogs";
 import { usePacksSync } from "./packs/use-packs";
 import { PresentMode } from "./present/PresentMode";
+import { ViewerToolbar } from "./presence/ViewerToolbar";
 import { ShapePalette } from "./panels/ShapePalette";
 import { SidePanel } from "./panels/SidePanel";
 import { Toolbar } from "./panels/Toolbar";
@@ -51,6 +52,7 @@ function Message({ title, body }: { title: string; body: string }) {
 
 /** Everything around the canvas that is not the diagram. Not rendered while presenting. */
 function Chrome({ paletteOpen }: { paletteOpen: boolean }) {
+  const readOnly = useEditor((state) => state.readOnly);
   return (
     <>
       <Scrollbars />
@@ -62,7 +64,7 @@ function Chrome({ paletteOpen }: { paletteOpen: boolean }) {
       </div>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center [&>*]:pointer-events-auto">
-        <Toolbar />
+        {readOnly ? <ViewerToolbar /> : <Toolbar />}
       </div>
       <div className="pointer-events-none absolute bottom-3 z-20 [&>*]:pointer-events-auto" style={{ left: paletteOpen ? 256 : 12 }}>
         <ZoomControls />
@@ -76,7 +78,8 @@ function Chrome({ paletteOpen }: { paletteOpen: boolean }) {
 /** Floating chrome around the canvas. Only rendered once the document is loaded. */
 function Workspace() {
   useShortcuts();
-  const paletteOpen = useEditor((state) => state.paletteOpen);
+  // A viewer has no use for the shape library: it would only offer what they cannot do.
+  const paletteOpen = useEditor((state) => state.paletteOpen && !state.readOnly);
   const presenting = useEditor((state) => state.presenting !== null);
   const name = useEditor((state) => state.doc!.name);
 

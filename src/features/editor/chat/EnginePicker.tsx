@@ -8,8 +8,8 @@ import { cn } from "@/lib/cn";
 
 /** One line each, so the person knows what a request is charged against before sending it. */
 function billingNote(engine: ChatEngineStatus): string {
-  if (engine.billing === "api") return engine.id === "claude-api" ? "Billed to your Anthropic API account" : "Billed to your API account";
-  return engine.id === "codex" ? "Uses your ChatGPT plan's allowance" : "Uses your Claude plan's allowance";
+  if (engine.billing === "api") return "Billed to your Anthropic API account";
+  return "Uses your Claude plan's allowance";
 }
 
 export interface EnginePickerProps {
@@ -66,6 +66,9 @@ export function EnginePicker({ engines, selected, onSelect, workdir, onWorkdirCh
                     <span className="flex items-center gap-1.5 text-[12.5px] font-medium text-ink">
                       {engine.label}
                       <span className="rounded bg-sunken px-1 text-[10px] font-normal text-ink-3">{engine.billing === "api" ? "API billing" : "Your plan"}</span>
+                      <span className={cn("rounded bg-sunken px-1 text-[10px] font-medium", engine.available ? "text-success" : "font-normal text-ink-3")}>
+                        {engine.available ? "Ready" : "Not set up"}
+                      </span>
                     </span>
                     <span className={cn("block text-[11.5px] leading-snug", engine.available && !engine.reason ? "text-ink-3" : engine.available ? "text-warn" : "text-ink-3")}>
                       {engine.reason ?? (engine.available ? billingNote(engine) : "Not available")}

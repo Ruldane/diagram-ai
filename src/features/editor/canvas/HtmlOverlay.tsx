@@ -14,6 +14,7 @@ import { actorColor, initials } from "@/lib/agents";
 import { cn } from "@/lib/cn";
 
 import { commentAnchor, postDraftComment } from "../actions/comments";
+import { PeerLayer } from "../presence/PeerLayer";
 import { commitText } from "../actions/elements";
 import { useEditor, useEditorStore } from "../store/context";
 import type { useDisplay } from "./World";
@@ -307,6 +308,7 @@ export function HtmlOverlay({ display }: { display: Display }) {
       )}
       {draft ? <DraftComment key={`${draft.x}:${draft.y}`} x={draft.x} y={draft.y} /> : null}
       <HighlightNote display={display} />
+      <PeerLayer display={display} />
       <AgentCursor />
     </>
   );

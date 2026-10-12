@@ -22,6 +22,7 @@ DiagramDoc ──exportPages(scope)──▶ ExportPage[] { name, scene, view }
 | PPTX | `src/core/export/pptx.ts` | `editable`: custom-geometry shapes + text boxes (text uses Office-safe fonts, spacing may differ); `image`: one PNG per slide |
 | draw.io | `src/core/io/drawio.ts` | uncompressed `.drawio`; unmapped shapes become rectangles |
 | Mermaid | `src/core/io/mermaid.ts` | flowcharts and sequence diagrams only |
+| PlantUML | `src/core/io/plantuml-export.ts` | sequence, class, use case, component, structured activity; text editor only (see [code-editor.md](code-editor.md)) |
 | JSON | the document itself | lossless, re-importable |
 
 ## Where it runs
@@ -39,6 +40,7 @@ The same four families (`public/fonts/*.ttf`, metrics in `src/core/text/font-met
 
 - **draw.io** → `ElementsSpec`: shapes by style → our shape ids (`drawio.ts` mapping table), nested geometry made absolute, HTML labels flattened, compressed pages inflated with `DecompressionStream`. Routes are dropped and recomputed.
 - **Mermaid** → spec (flowchart) or `SequenceSpec`; flowcharts are then auto-laid-out. Other diagram types return a warning, never an exception.
+- **PlantUML** (`plantuml.ts`) → spec or `SequenceSpec`, with per-line diagnostics. Used by the Code tab, which applies it to the open diagram ([code-editor.md](code-editor.md)); not an `importDiagram` format.
 
 Imports never throw on bad input: they return an empty spec and warnings.
 

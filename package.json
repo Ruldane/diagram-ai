@@ -3,11 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -H 127.0.0.1",
+    "dev:lan": "next dev -H 0.0.0.0",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "gallery": "tsx scripts/gallery.ts",
@@ -20,6 +21,7 @@
     "db:reset": "node scripts/db.mjs reset",
     "db:migrate": "tsx scripts/db.ts migrate",
     "db:import-files": "tsx scripts/db.ts import-files",
+    "auth": "tsx scripts/auth.ts",
     "test:db": "vitest run --config vitest.db.config.mts",
     "icons:brands": "node scripts/gen-brand-icons.mjs",
     "icons:import": "tsx scripts/import-icon-pack.ts"

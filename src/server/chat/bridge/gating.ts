@@ -1,7 +1,7 @@
 import { BRIDGE_ACK_HEADER, bridgeAck } from "@/core/chat-terms";
 import type { ChatEngineId } from "@/core/protocol";
 
-import { databaseUrl } from "../../config";
+import { authEnabled } from "../../config";
 import { ServiceError } from "../../errors";
 
 /** Hosts a browser on this machine uses to reach the app. */
@@ -34,7 +34,7 @@ export interface BridgeEnvironment {
 }
 
 export function currentBridgeEnvironment(): BridgeEnvironment {
-  return { switch: process.env.DIAGRAM_AI_LOCAL_AGENTS, multiUser: Boolean(databaseUrl()) };
+  return { switch: process.env.DIAGRAM_AI_LOCAL_AGENTS, multiUser: authEnabled() };
 }
 
 /**

@@ -68,7 +68,13 @@ export const DEFAULT_TIMEOUT_MS = 10 * 60_000;
 
 /** Characters that are safe in a `cmd.exe` command line without any escaping. */
 const PLAIN = /^[A-Za-z0-9_.:\\/=,+@-]+$/;
-const QUOTABLE = /^[A-Za-z0-9_.:\\/=,+@* -]*$/;
+/**
+ * Inside double quotes cmd.exe treats these literally. Letters of any script
+ * are allowed because a profile folder is often named after the person
+ * ("C:\Users\José\AppData"); `%` (variable expansion), `"`, `^`, `!`, `&|<>`
+ * and line breaks stay refused.
+ */
+const QUOTABLE = /^[\p{L}\p{N}_.:\\/=,+@*()[\]#~' -]*$/u;
 
 /**
  * Quotes one argument for `cmd.exe`. Only arguments built from a conservative

@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Instrument_Serif } from "next/font/google";
+import { Suspense } from "react";
 
 import { Toaster } from "@/components/ui/toaster";
+import { AuthGate } from "@/features/auth/AuthGate";
 
 import "./globals.css";
 
@@ -30,6 +32,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body>
         {children}
+        <Suspense>
+          <AuthGate />
+        </Suspense>
         <Toaster />
       </body>
     </html>

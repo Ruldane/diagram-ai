@@ -1,4 +1,4 @@
-import { DATA_DIR, databaseUrl } from "./config";
+import { authEnabled, authRequestedWithoutDatabase, DATA_DIR, databaseUrl } from "./config";
 import { Database, describeDatabase } from "./db/database";
 import { createHubState, Hub, type HubState } from "./realtime/hub";
 import { createServiceState, DiagramService, type ServiceState } from "./service";
@@ -34,6 +34,8 @@ function getState(): ServerState {
     globalRef.__diagramAiState = { hub: createHubState(), repository: createRepositoryState(), postgres: createPostgresState(), service: createServiceState() };
     const url = databaseUrl();
     console.info(`[diagram-ai] Storage: ${url ? `PostgreSQL at ${describeDatabase(url)}` : `JSON files in ${DATA_DIR}`}`);
+    console.info(`[diagram-ai] Accounts: ${authEnabled() ? "on (DIAGRAM_AI_AUTH=on)" : "off, solo mode: no login"}`);
+    if (authRequestedWithoutDatabase()) console.warn("[diagram-ai] DIAGRAM_AI_AUTH=on needs DATABASE_URL (accounts live in PostgreSQL); accounts stay off.");
   }
   const state = globalRef.__diagramAiState;
   // A state object created before this field existed (dev server hot reload) lacks it.
@@ -56,6 +58,9 @@ export function getContext(): ServerContext {
 export function getDatabase(): Database | null {
   return databaseUrl() ? new Database(getState().postgres.database) : null;
 }
+
+/** The storage backend, for the few callers that must wait for writes (ownership is recorded after the diagram row exists). */
+export const getRepository = (): DiagramRepository => createRepository(getState());
 
 export const getService = (): DiagramService => getContext().service;
 export const getHub = (): Hub => getContext().hub;

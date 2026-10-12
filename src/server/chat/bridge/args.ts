@@ -15,11 +15,33 @@ export interface ClaudeArgsInput {
   resume: boolean;
   /** File holding the `--mcp-config` JSON. */
   mcpConfigFile: string;
-  /** Read-only file tools, offered only when the person chose a working folder. */
-  fileTools: boolean;
+  /**
+   * Read-only file tools, offered only when the person chose a working folder
+   * (an absolute path) and only for files inside it.
+   */
+  folder?: string;
   model?: string;
   /** Appended to the system prompt. Omitted when it must travel on stdin instead (shell shims). */
   brief?: string;
+}
+
+/** Characters a folder path may contain to be written into a permission rule without escaping. */
+const RULE_SAFE_PATH = /^[\p{L}\p{N} _.:\\/@+,#~'-]+$/u;
+
+/**
+ * Allow rules that let the read-only file tools see one folder and nothing
+ * else (`Read(//c/Users/me/app/**)`: a leading `//` is an absolute path, and
+ * Windows drive paths are written POSIX-style). `null` when the path cannot be
+ * expressed safely, in which case no file tools are offered at all.
+ */
+export function folderReadRules(folder: string): string[] | null {
+  if (!RULE_SAFE_PATH.test(folder)) return null;
+  const posix = folder.replace(/\\/g, "/").replace(/\/+$/, "");
+  const drive = /^([A-Za-z]):\/(.+)$/.exec(posix);
+  const absolute = drive ? `/${drive[1].toLowerCase()}/${drive[2]}` : posix.startsWith("/") && !posix.startsWith("//") ? posix : null;
+  if (!absolute) return null;
+  const scope = `/${absolute}/**`;
+  return [`Read(${scope})`, `Glob(${scope})`, `Grep(${scope})`];
 }
 
 /**
@@ -28,13 +50,20 @@ export interface ClaudeArgsInput {
  * `dontAsk`, anything not allow-listed is refused instead of prompting.
  */
 export function buildClaudeArgs(input: ClaudeArgsInput): string[] {
-  const allowed = [`mcp__${MCP_SERVER_ID}__*`, ...(input.fileTools ? ["Read", "Glob", "Grep"] : [])];
+  const fileRules = input.folder ? folderReadRules(input.folder) : null;
+  const allowed = [`mcp__${MCP_SERVER_ID}__*`, ...(fileRules ?? [])];
   const args = [
     "-p",
     "--output-format",
     "stream-json",
     "--verbose",
     "--include-partial-messages",
+    // The person's installed skills would only add noise (and tokens) to a diagramming request.
+    "--disable-slash-commands",
+    // No user, project or local settings files: their permission rules, hooks, plugins and `env` must not
+    // widen what this run may do (a broad `Read` allow rule would otherwise defeat the folder scope below).
+    "--setting-sources",
+    "",
     "--strict-mcp-config",
     "--mcp-config",
     input.mcpConfigFile,
@@ -45,7 +74,7 @@ export function buildClaudeArgs(input: ClaudeArgsInput): string[] {
     "--disallowedTools",
     ...BLOCKED_TOOLS.map((tool) => `mcp__${MCP_SERVER_ID}__${tool}`),
     "--tools",
-    input.fileTools ? "Read,Glob,Grep" : "",
+    fileRules ? "Read,Glob,Grep" : "",
     "--max-turns",
     String(CLAUDE_MAX_TURNS),
     input.resume ? "--resume" : "--session-id",
@@ -59,34 +88,4 @@ export function buildClaudeArgs(input: ClaudeArgsInput): string[] {
 /** The `--mcp-config` document: only this app's server, loaded eagerly. */
 export function claudeMcpConfig(url: string): string {
   return JSON.stringify({ mcpServers: { [MCP_SERVER_ID]: { type: "http", url, alwaysLoad: true } } });
-}
-
-export interface CodexArgsInput {
-  /** `thread_id` of the previous reply, to continue it. */
-  threadId?: string;
-  mcpUrl: string;
-  model?: string;
-}
-
-/**
- * Arguments for one `codex exec` run; the prompt goes on stdin (`-`). The MCP
- * server is registered with a `-c` override for this run only, and the user's
- * own config file is not loaded (auth still comes from CODEX_HOME). Override
- * values are left unquoted: Codex falls back to the raw string when a value is
- * not valid TOML, which keeps the arguments free of quotes for shell shims.
- */
-export function buildCodexArgs(input: CodexArgsInput): string[] {
-  const common = [
-    "--json",
-    "--skip-git-repo-check",
-    "--ignore-user-config",
-    "-c",
-    "sandbox_mode=read-only",
-    "-c",
-    `mcp_servers.${MCP_SERVER_ID}.url=${input.mcpUrl}`,
-  ];
-  if (input.model) common.push("-m", input.model);
-  return input.threadId
-    ? ["exec", "resume", ...common, input.threadId, "-"]
-    : ["exec", ...common, "--sandbox", "read-only", "-"];
 }

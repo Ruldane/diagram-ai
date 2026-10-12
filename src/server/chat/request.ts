@@ -11,7 +11,7 @@ export const chatRequestSchema = z.object({
   clientId: z.string().max(80).optional(),
   selection: z.array(z.string().max(64)).max(500).optional(),
   viewport: z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() }).optional(),
-  engine: z.enum(["claude-code", "codex", "claude-api"]).optional(),
+  engine: z.enum(["claude-code", "claude-api"]).optional(),
   sessionId: z.string().max(80).optional(),
   workdir: z.string().max(1000).optional(),
 });

@@ -1,6 +1,6 @@
 import { randomId } from "@/core/model/ids";
 import type { Actor, Id } from "@/core/model/types";
-import type { ActivityAction, ActivityEntry, AgentInfo, ClientPresence, DiagramEvent, WorkspaceEvent } from "@/core/protocol";
+import type { ActivityAction, ActivityEntry, AgentInfo, ClientPresence, DiagramEvent, PeerInfo, WorkspaceEvent } from "@/core/protocol";
 
 import { ACTIVITY_LIMIT, AGENT_WORKING_MS } from "../config";
 
@@ -8,6 +8,17 @@ type Listener<E> = (event: E) => void;
 
 const PRESENCE_TTL_MS = 5 * 60_000;
 const AGENT_TTL_MS = 30 * 60_000;
+/** A peer that has not reported for this long is not shown (its tab is asleep or gone). */
+const PEER_TTL_MS = 2 * 60_000;
+
+/** Colours handed to people on the same diagram, least used first. Agents keep their own hues. */
+export const PEER_COLORS = ["#e11d48", "#0d9488", "#7c3aed", "#d97706", "#2563eb", "#c026d3", "#0891b2", "#65a30d"];
+
+/** A peer as stored: `owner` stops one account from speaking for another account's tab. */
+interface StoredPeer {
+  peer: PeerInfo;
+  owner: string;
+}
 
 /**
  * In-process pub/sub plus the ephemeral state that never touches disk:
@@ -23,6 +34,8 @@ export interface HubState {
   presence: Map<Id, Map<string, ClientPresence>>;
   agents: Map<string, AgentInfo>;
   idleTimers: Map<string, NodeJS.Timeout>;
+  /** Browser tabs on each diagram, for live cursors. */
+  peers: Map<Id, Map<string, StoredPeer>>;
 }
 
 export const createHubState = (): HubState => ({
@@ -32,6 +45,7 @@ export const createHubState = (): HubState => ({
   presence: new Map(),
   agents: new Map(),
   idleTimers: new Map(),
+  peers: new Map(),
 });
 
 export class Hub {
@@ -41,6 +55,7 @@ export class Hub {
   private readonly presence: HubState["presence"];
   private readonly agents: HubState["agents"];
   private readonly idleTimers: HubState["idleTimers"];
+  private readonly peers: HubState["peers"];
 
   /** State is passed in so it can outlive this instance (see `server/context.ts`). */
   constructor(state: HubState = createHubState()) {
@@ -50,6 +65,8 @@ export class Hub {
     this.presence = state.presence;
     this.agents = state.agents;
     this.idleTimers = state.idleTimers;
+    // State created before live cursors existed (a hot-reloaded dev server) lacks the map.
+    this.peers = state.peers ??= new Map();
   }
 
   /* ------------------------------------------------------------ pub/sub */
@@ -108,6 +125,58 @@ export class Hub {
   forget(diagramId: Id): void {
     this.activity.delete(diagramId);
     this.presence.delete(diagramId);
+    this.peers.delete(diagramId);
+  }
+
+  /* -------------------------------------------------------------- peers */
+
+  /** People (and tabs) currently on a diagram, with their cursor and selection. */
+  listPeers(diagramId: Id): PeerInfo[] {
+    const cutoff = Date.now() - PEER_TTL_MS;
+    return [...(this.peers.get(diagramId)?.values() ?? [])].filter((stored) => Date.parse(stored.peer.at) >= cutoff).map((stored) => stored.peer);
+  }
+
+  /**
+   * Records where a tab's pointer and selection are and tells everyone else.
+   * `owner` names who the tab belongs to; another owner cannot move a tab that exists.
+   * Returns null when the update was refused.
+   */
+  setPeer(diagramId: Id, input: { id: string; name: string; userId?: string; cursor?: { x: number; y: number }; selection: Id[] }, owner = ""): PeerInfo | null {
+    let tabs = this.peers.get(diagramId);
+    if (!tabs) this.peers.set(diagramId, (tabs = new Map()));
+    const existing = tabs.get(input.id);
+    if (existing && existing.owner !== owner) return null;
+    const used = new Map<string, number>();
+    for (const stored of tabs.values()) if (stored.peer.id !== input.id) used.set(stored.peer.color, (used.get(stored.peer.color) ?? 0) + 1);
+    const color = existing?.peer.color ?? [...PEER_COLORS].sort((a, b) => (used.get(a) ?? 0) - (used.get(b) ?? 0))[0];
+    const peer: PeerInfo = {
+      id: input.id,
+      name: input.name,
+      color,
+      ...(input.userId ? { userId: input.userId } : {}),
+      ...(input.cursor ? { cursor: input.cursor } : {}),
+      selection: input.selection,
+      at: new Date().toISOString(),
+    };
+    tabs.set(input.id, { peer, owner });
+    this.publish(diagramId, { type: "peer", peer });
+    return peer;
+  }
+
+  /** The tab is gone (its event stream closed). */
+  removePeer(diagramId: Id, id: string): void {
+    const tabs = this.peers.get(diagramId);
+    if (!tabs?.delete(id)) return;
+    if (tabs.size === 0) this.peers.delete(diagramId);
+    this.publish(diagramId, { type: "peer-left", id });
+  }
+
+  /** Lowest "Tab N" not in use on the diagram: solo mode has no names, only tabs. */
+  nextTabName(diagramId: Id): string {
+    const taken = new Set([...(this.peers.get(diagramId)?.values() ?? [])].map((stored) => stored.peer.name));
+    let n = 1;
+    while (taken.has(`Tab ${n}`)) n++;
+    return `Tab ${n}`;
   }
 
   /* ----------------------------------------------------------- presence */
@@ -145,6 +214,7 @@ export class Hub {
       lastSeen: new Date().toISOString(),
       diagramId: diagramId ?? previous?.diagramId,
       tool,
+      ...(actor.ownerId ? { ownerId: actor.ownerId } : {}),
     };
     this.agents.set(actor.id, agent);
     this.broadcastAgent(agent);

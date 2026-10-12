@@ -27,10 +27,11 @@ Next dev reloads modules and compiles routes separately, so plain-data state (ma
 | --- | --- |
 | `GET/POST /api/diagrams`, `GET/DELETE /api/diagrams/[id]` | list, create, read, delete |
 | `POST …/[id]/ops` | browser patches |
-| `GET …/[id]/events` | SSE: `hello`, `patch`, `activity`, `agent`, `highlight`, `reset`, `deleted` |
-| `POST …/[id]/presence`, `…/layout` | selection/viewport; computed layout patch (not saved) |
+| `GET …/[id]/events` | SSE: `hello`, `patch`, `activity`, `agent`, `peer`, `peer-left`, `highlight`, `reset`, `deleted` |
+| `POST …/[id]/presence`, `…/layout` | selection/viewport/pointer (shown to others as `peer` events); computed layout patch (not saved) |
 | `…/[id]/snapshots[/id]`, `…/duplicate`, `…/export`, `…/thumbnail` | checkpoints, copy, server-rendered files, gallery PNG |
 | `POST /api/import`, `GET /api/events` | create from JSON/draw.io/Mermaid; workspace SSE |
+| `/api/auth/*`, `/api/admin/users`, `…/[id]/members`, `…/[id]/share`, `/api/share/redeem` | accounts, tokens, members, share links (accounts on; [auth.md](auth.md)) |
 | `POST /api/mcp/[[...agent]]` | MCP endpoint ([mcp.md](mcp.md)) |
 
 ## Adding an endpoint
@@ -42,7 +43,9 @@ Next dev reloads modules and compiles routes separately, so plain-data state (ma
 
 ## Security model
 
-No accounts in local mode: whoever can reach the server can edit. `assertSameOrigin` blocks cross-site browser requests (a web page cannot drive the local app); requests without an `Origin` header (CLI agents, curl) pass. Input is validated at every boundary with the schemas in `src/core/model/schema.ts` (ids are path-safe, colours normalised, links limited to http(s)/mailto/relative).
+No accounts in solo mode (the default, files or PostgreSQL): whoever can reach the server can edit. `assertSameOrigin` blocks cross-site browser requests (a web page cannot drive the local app); requests without an `Origin` header (CLI agents, curl) pass. Input is validated at every boundary with the schemas in `src/core/model/schema.ts` (ids are path-safe, colours normalised, links limited to http(s)/mailto/relative).
+
+With accounts on (`authEnabled()`: `DIAGRAM_AI_AUTH=on` and `DATABASE_URL`) every route starts with `requestContext(request)` from `src/server/auth/request.ts` and uses the service and hub it returns: they are wrapped so a call is checked against the caller's role on the diagram. Use it in any new route and never call `getService()` / `getContext()` from `src/app/api`; `src/server/auth/routes.test.ts` fails otherwise. Rules, credentials and the checklist: [auth.md](auth.md).
 
 ## Storage
 

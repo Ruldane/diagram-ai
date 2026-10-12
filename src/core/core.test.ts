@@ -185,6 +185,16 @@ describe("layout", () => {
     expect(doc.settings.autoLayout).toBe(true);
   });
 
+  it("arranging only some nodes leaves the diagram's layout settings alone", async () => {
+    let doc = createDoc();
+    doc = applyPatch(doc, applySpec(doc, { nodes: ["a", "b", "c"].map((id) => ({ id, text: id })), edges: [{ from: "a", to: "b" }] }).patch).doc;
+    const before = doc.settings;
+    const patch = await computeLayout(doc, { algorithm: "grid", direction: "right" }, await loadElk(), { ids: new Set(["a", "b"]) });
+    expect(patch.doc).toBeUndefined();
+    expect(applyPatch(doc, patch).doc.settings).toEqual(before);
+    expect(patch.nodes?.set?.some((n) => n.id === "c")).toBeFalsy();
+  });
+
   it("grows containers around their children", async () => {
     let doc = createDoc();
     doc = applyPatch(doc, applySpec(doc, { nodes: [{ id: "g", shape: "group", text: "Group" }, { id: "a", text: "A", parent: "g" }, { id: "b", text: "B", parent: "g" }, { id: "out", text: "Outside" }], edges: [{ from: "a", to: "b" }, { from: "b", to: "out" }] }).patch).doc;

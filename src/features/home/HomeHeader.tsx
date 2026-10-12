@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { AccountMenu } from "@/features/auth/AccountMenu";
+
 import { AgentStatus } from "./AgentStatus";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -27,6 +29,7 @@ export function HomeHeader() {
         <div className="ml-auto flex min-w-0 items-center gap-1">
           <AgentStatus />
           <ThemeToggle />
+          <AccountMenu />
         </div>
       </div>
     </header>

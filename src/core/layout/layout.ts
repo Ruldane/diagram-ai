@@ -280,6 +280,8 @@ export async function computeLayout(
   return {
     ...(movedNodes.length ? { nodes: { set: movedNodes } } : {}),
     ...(updatedEdges.length ? { edges: { set: updatedEdges } } : {}),
-    doc: { settings: { layout: options, autoLayout: true } },
+    // Arranging part of a diagram must not make the whole diagram "machine arranged" (later edits would re-layout it),
+    // nor change the layout a later full "tidy up" applies.
+    ...(scope.ids ? {} : { doc: { settings: { layout: options, autoLayout: true } } }),
   };
 }
